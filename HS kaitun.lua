@@ -100,6 +100,7 @@ local Array = {
 				"Haze Seas/Haze Sea2.lua",
 				"Haze Seas\\Haze Sea2.lua",
 			},
+			DirectLoadstring = true,
 			PreferTool = "Shusui",
 			RequirePreferTool = true,
 			AutoRefundStats = true,
@@ -5917,6 +5918,7 @@ Array.Config.World2AutoFarm.ScriptPaths = type(Array.Config.World2AutoFarm.Scrip
 		"Haze Seas/Haze Sea2.lua",
 		"Haze Seas\\Haze Sea2.lua",
 	}
+Array.Config.World2AutoFarm.DirectLoadstring = Array.Config.World2AutoFarm.DirectLoadstring ~= false
 Array.Config.World2AutoFarm.PreferTool = tostring(Array.Config.World2AutoFarm.PreferTool or "Shusui")
 Array.Config.World2AutoFarm.RequirePreferTool = Array.Config.World2AutoFarm.RequirePreferTool ~= false
 Array.Config.World2AutoFarm.AutoRefundStats = Array.Config.World2AutoFarm.AutoRefundStats ~= false
@@ -6648,28 +6650,57 @@ function Array.Function.GetWorld2AutoFarmSource()
 	return nil
 end
 
-function Array.Function.StartWorld2AutoFarmScript()
-	if Array.State.World2AutoFarmStarted or not Array.Config.World2AutoFarm.Enabled then
-		return false
+function Array.Function.FetchWorld2AutoFarmUrl(Url)
+	Array.State.World2AutoFarmHttpSuccess, Array.State.World2AutoFarmSource = pcall(function()
+		return game:HttpGet(Url)
+	end)
+
+	if Array.Function.IsWorld2AutoFarmSource(Array.State.World2AutoFarmSource) then
+		return Array.State.World2AutoFarmSource
 	end
 
-	if game.PlaceId ~= Array.Config.PlaceId.World2 then
-		Array.Function.SetStatus("World2AutoFarm", "wrong_place")
+	if type(request) == "function" then
+		Array.State.World2AutoFarmHttpSuccess, Array.State.World2AutoFarmResponse = pcall(function()
+			return request({
+				Url = Url,
+				Method = "GET",
+			})
+		end)
 
-		return false
+		Array.State.World2AutoFarmSource = Array.State.World2AutoFarmResponse and Array.State.World2AutoFarmResponse.Body or nil
+
+		if Array.Function.IsWorld2AutoFarmSource(Array.State.World2AutoFarmSource) then
+			return Array.State.World2AutoFarmSource
+		end
 	end
 
-	Array.Function.ConfigureWorld2AutoFarm()
-	Array.State.World2AutoFarmSource = Array.Function.GetWorld2AutoFarmSource()
+	if type(syn) == "table" and type(syn.request) == "function" then
+		Array.State.World2AutoFarmHttpSuccess, Array.State.World2AutoFarmResponse = pcall(function()
+			return syn.request({
+				Url = Url,
+				Method = "GET",
+			})
+		end)
 
-	if not Array.State.World2AutoFarmSource then
-		Array.Function.SetStatus("World2AutoFarm", "missing_source")
+		Array.State.World2AutoFarmSource = Array.State.World2AutoFarmResponse and Array.State.World2AutoFarmResponse.Body or nil
+
+		if Array.Function.IsWorld2AutoFarmSource(Array.State.World2AutoFarmSource) then
+			return Array.State.World2AutoFarmSource
+		end
+	end
+
+	return nil
+end
+
+function Array.Function.RunWorld2AutoFarmSource(Source, ReadMode, SourceValue)
+	if not Array.Function.IsWorld2AutoFarmSource(Source) then
+		Array.Function.SetStatus("World2AutoFarm", "invalid_source")
 
 		return false
 	end
 
 	Array.State.World2AutoFarmLoadSuccess, Array.State.World2AutoFarmChunk, Array.State.World2AutoFarmLoadError =
-		pcall(loadstring, Array.State.World2AutoFarmSource)
+		pcall(loadstring, Source)
 
 	if not Array.State.World2AutoFarmLoadSuccess or type(Array.State.World2AutoFarmChunk) ~= "function" then
 		Array.Function.SetStatus("World2AutoFarm", "load_failed")
@@ -6680,6 +6711,14 @@ function Array.Function.StartWorld2AutoFarmScript()
 
 	Array.State.World2AutoFarmStarted = true
 	Array.Function.SetStatus("World2AutoFarm", "starting")
+
+	if ReadMode then
+		Array.Function.SetStatus("World2AutoFarmRead", ReadMode)
+	end
+
+	if SourceValue then
+		Array.Function.SetStatus("World2AutoFarmSource", SourceValue)
+	end
 
 	task.spawn(function()
 		Array.State.World2AutoFarmRunSuccess, Array.State.World2AutoFarmRunError = pcall(Array.State.World2AutoFarmChunk)
@@ -6695,6 +6734,55 @@ function Array.Function.StartWorld2AutoFarmScript()
 	return true
 end
 
+function Array.Function.StartWorld2DirectLoadstring()
+	if not Array.Config.World2AutoFarm.DirectLoadstring or type(Array.Config.World2AutoFarm.ScriptUrls) ~= "table" then
+		return false
+	end
+
+	Array.Function.SetStatus("World2AutoFarm", "direct_loadstring")
+
+	for _, Url in next, Array.Config.World2AutoFarm.ScriptUrls do
+		Array.Function.SetStatus("World2AutoFarmDirectUrl", Url)
+		Array.State.World2AutoFarmDirectSource = Array.Function.FetchWorld2AutoFarmUrl(Url)
+
+		if Array.Function.RunWorld2AutoFarmSource(Array.State.World2AutoFarmDirectSource, "direct_loadstring", Url) then
+			return true
+		end
+
+		Array.Function.SetStatus("World2AutoFarmDirectRejected", Url)
+	end
+
+	return false
+end
+
+function Array.Function.StartWorld2AutoFarmScript()
+	if Array.State.World2AutoFarmStarted or not Array.Config.World2AutoFarm.Enabled then
+		return false
+	end
+
+	if game.PlaceId ~= Array.Config.PlaceId.World2 then
+		Array.Function.SetStatus("World2AutoFarm", "wrong_place")
+
+		return false
+	end
+
+	Array.Function.ConfigureWorld2AutoFarm()
+
+	if Array.Function.StartWorld2DirectLoadstring() then
+		return true
+	end
+
+	Array.State.World2AutoFarmSource = Array.Function.GetWorld2AutoFarmSource()
+
+	if not Array.State.World2AutoFarmSource then
+		Array.Function.SetStatus("World2AutoFarm", "missing_source")
+
+		return false
+	end
+
+	return Array.Function.RunWorld2AutoFarmSource(Array.State.World2AutoFarmSource)
+end
+
 function Array.Function.StartWorld2Script()
 	if Array.State.World2Started then
 		return true
@@ -6706,12 +6794,12 @@ function Array.Function.StartWorld2Script()
 	Array.Function.SetStatus("PlaceCheck", "world2_place")
 	Array.Function.SetStatus("BuyKatana", "disabled_combat")
 
+	task.spawn(Array.Function.StartWorld2AutoFarmScript)
 	task.spawn(Array.Function.ClickPlayWhenReady)
 	Array.Function.StartAutoPlaytimeRewards()
 	Array.Function.StartAutoQuestRewards()
 	Array.Function.WaitWorldReady(Array.Config.WorldReadyTimeout)
 	Array.Function.RedeemCodes()
-	Array.Function.StartWorld2AutoFarmScript()
 
 	return true
 end
@@ -13548,6 +13636,8 @@ assert(type(Array.Function.FindWorld3ShrinePrompt) == "function", "world 3 shrin
 assert(type(Array.Function.TriggerWorld3ShrinePrompt) == "function", "world 3 shrine prompt trigger missing")
 assert(type(Array.Function.GetSwordMastery) == "function", "sword mastery helper missing")
 assert(type(Array.Function.StartWorld2AutoFarmScript) == "function", "world 2 auto farm loader missing")
+assert(type(Array.Function.StartWorld2DirectLoadstring) == "function", "world 2 direct loadstring missing")
+assert(Array.Config.World2AutoFarm.DirectLoadstring == true or Array.Config.World2AutoFarm.DirectLoadstring == false, "world 2 direct loadstring config missing")
 assert(type(Array.Function.IsWorld2AutoFarmSource) == "function" and Array.Function.IsWorld2AutoFarmSource(Array.World2AutoFarmCode), "world 2 source validator failed")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Config.PreferTool = \"Shusui\"", 1, true), "world 2 embedded auto farm missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "SwordMasterySwitch", 1, true), "world 2 sword mastery switch missing")
