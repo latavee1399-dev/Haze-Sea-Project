@@ -1,5 +1,12 @@
 repeat task.wait() until game:IsLoaded()
 
+local LoadDelay = math.max(tonumber(_G.HSKaitunLoadDelaySeconds) or 10, 0)
+
+if not _G.HSKaitunGameLoadDelayDone then
+	_G.HSKaitunGameLoadDelayDone = true
+	task.wait(LoadDelay)
+end
+
 local Array = {
 	Config = {
 		AllowedPlaceIds = {
@@ -332,6 +339,15 @@ local Array = {
 	QueueCode = [=[
 _G.HSKaitunReloaded = false
 
+repeat task.wait() until game:IsLoaded()
+
+_G.HSKaitunLoadDelaySeconds = math.max(tonumber(_G.HSKaitunLoadDelaySeconds) or 10, 0)
+
+if not _G.HSKaitunGameLoadDelayDone then
+	_G.HSKaitunGameLoadDelayDone = true
+	task.wait(_G.HSKaitunLoadDelaySeconds)
+end
+
 pcall(function()
 	if type(loadstring) ~= "function" then
 		return
@@ -464,6 +480,13 @@ end)
 ]=],
 	World2AutoFarmCode = [=[
 repeat task.wait() until game:IsLoaded()
+
+local LoadDelay = math.max(tonumber(_G.HSKaitunLoadDelaySeconds) or 10, 0)
+
+if not _G.HSKaitunGameLoadDelayDone then
+	_G.HSKaitunGameLoadDelayDone = true
+	task.wait(LoadDelay)
+end
 
 if game.PlaceId ~= 14979402479 then
 	return
