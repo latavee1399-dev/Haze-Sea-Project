@@ -1,7 +1,5 @@
 repeat task.wait() until game:IsLoaded()
 
-task.wait(10)
-
 local Array = {
 	Config = {
 		AllowedPlaceIds = {
@@ -112,6 +110,12 @@ local Array = {
 				"Fruit",
 			},
 			ForceFarmLevelEnabled = false,
+		},
+		QueueUrls = {
+			"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/HS%20Kaitun.lua",
+			"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/HS%20Kaitun.lua",
+			"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/Haze%20Seas/HS%20Kaitun.lua",
+			"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/Haze%20Seas/HS%20Kaitun.lua",
 		},
 		World3Shrine = {
 			Enabled = true,
@@ -328,7 +332,7 @@ local Array = {
 _G.HSKaitunReloaded = false
 
 pcall(function()
-	if type(readfile) ~= "function" or type(loadstring) ~= "function" then
+	if type(loadstring) ~= "function" then
 		return
 	end
 
@@ -337,19 +341,86 @@ pcall(function()
 		"Haze Seas\\HS Kaitun.lua",
 		"HS Kaitun.lua",
 	}
+	_G.HSKaitunQueueUrls = type(_G.HSKaitunQueueUrls) == "table" and _G.HSKaitunQueueUrls or {
+		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/HS%20Kaitun.lua",
+		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/HS%20Kaitun.lua",
+		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/Haze%20Seas/HS%20Kaitun.lua",
+		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/Haze%20Seas/HS%20Kaitun.lua",
+	}
 
-	for _, Path in next, _G.HSKaitunQueuePaths do
+	if type(readfile) == "function" then
+		for _, Path in next, _G.HSKaitunQueuePaths do
+			if _G.HSKaitunReloaded then
+				break
+			end
+
+			_G.HSKaitunQueueSuccess, _G.HSKaitunQueueSource = pcall(function()
+				return readfile(Path)
+			end)
+
+			if _G.HSKaitunQueueSuccess
+				and type(_G.HSKaitunQueueSource) == "string"
+				and #_G.HSKaitunQueueSource > 0
+				and string.find(_G.HSKaitunQueueSource, "HSKaitun", 1, true)
+			then
+				_G.HSKaitunQueueChunk = loadstring(_G.HSKaitunQueueSource)
+
+				if type(_G.HSKaitunQueueChunk) == "function" then
+					_G.HSKaitunReloaded = true
+					_G.HSKaitunQueueChunk()
+				end
+			end
+		end
+	end
+
+	for _, Url in next, _G.HSKaitunQueueUrls do
 		if _G.HSKaitunReloaded then
 			break
 		end
 
 		_G.HSKaitunQueueSuccess, _G.HSKaitunQueueSource = pcall(function()
-			return readfile(Path)
+			return game:HttpGet(Url)
 		end)
 
-		if _G.HSKaitunQueueSuccess and type(_G.HSKaitunQueueSource) == "string" and #_G.HSKaitunQueueSource > 0 then
-			_G.HSKaitunReloaded = true
-			loadstring(_G.HSKaitunQueueSource)()
+		if not _G.HSKaitunQueueSuccess
+			or type(_G.HSKaitunQueueSource) ~= "string"
+			or #_G.HSKaitunQueueSource == 0
+		then
+			_G.HSKaitunQueueSuccess = false
+			_G.HSKaitunQueueSource = nil
+
+			if type(request) == "function" then
+				_G.HSKaitunQueueSuccess, _G.HSKaitunQueueResponse = pcall(function()
+					return request({
+						Url = Url,
+						Method = "GET",
+					})
+				end)
+
+				_G.HSKaitunQueueSource = _G.HSKaitunQueueResponse and _G.HSKaitunQueueResponse.Body or nil
+			elseif type(syn) == "table" and type(syn.request) == "function" then
+				_G.HSKaitunQueueSuccess, _G.HSKaitunQueueResponse = pcall(function()
+					return syn.request({
+						Url = Url,
+						Method = "GET",
+					})
+				end)
+
+				_G.HSKaitunQueueSource = _G.HSKaitunQueueResponse and _G.HSKaitunQueueResponse.Body or nil
+			end
+		end
+
+		if _G.HSKaitunQueueSuccess
+			and type(_G.HSKaitunQueueSource) == "string"
+			and #_G.HSKaitunQueueSource > 0
+			and string.find(_G.HSKaitunQueueSource, "HSKaitun", 1, true)
+		then
+			_G.HSKaitunQueueChunk = loadstring(_G.HSKaitunQueueSource)
+
+			if type(_G.HSKaitunQueueChunk) == "function" then
+				_G.HSKaitunReloaded = true
+				_G.HSKaitunQueueChunk()
+			end
 		end
 	end
 end)
@@ -5712,6 +5783,12 @@ Array.Config.AllowedPlaceIds[Array.Config.PlaceId.Source] = true
 Array.Config.AllowedPlaceIds[Array.Config.PlaceId.World1] = true
 Array.Config.AllowedPlaceIds[Array.Config.PlaceId.World2] = true
 Array.Config.AllowedPlaceIds[Array.Config.PlaceId.World3] = true
+Array.Config.QueueUrls = type(Array.Config.QueueUrls) == "table" and Array.Config.QueueUrls or {
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/HS%20Kaitun.lua",
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/HS%20Kaitun.lua",
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/Haze%20Seas/HS%20Kaitun.lua",
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/Haze%20Seas/HS%20Kaitun.lua",
+}
 Array.Config.ClickPlay = Array.Config.ClickPlay ~= false
 Array.Config.AutoRedeemCode = Array.Config.AutoRedeemCode ~= false
 Array.Config.AutoPlaytimeRewards = Array.Config.AutoPlaytimeRewards ~= false
@@ -6247,25 +6324,79 @@ function Array.Function.GetQueueOnTeleport()
 end
 
 function Array.Function.GetQueueSource()
-	if type(readfile) ~= "function" then
-		return Array.QueueCode
-	end
-
 	Array.State.QueuePaths = {
 		"Haze Seas/HS Kaitun.lua",
 		"Haze Seas\\HS Kaitun.lua",
 		"HS Kaitun.lua",
 	}
 
-	for _, Path in next, Array.State.QueuePaths do
-		Array.State.QueueSourceSuccess, Array.State.QueueSource = pcall(function()
-			return readfile(Path)
-		end)
+	if type(readfile) == "function" then
+		for _, Path in next, Array.State.QueuePaths do
+			Array.State.QueueSourceSuccess, Array.State.QueueSource = pcall(function()
+				return readfile(Path)
+			end)
 
-		if Array.State.QueueSourceSuccess and type(Array.State.QueueSource) == "string" and #Array.State.QueueSource > 0 then
-			return Array.State.QueueSource
+			if Array.State.QueueSourceSuccess
+				and type(Array.State.QueueSource) == "string"
+				and #Array.State.QueueSource > 0
+				and string.find(Array.State.QueueSource, "HSKaitun", 1, true)
+			then
+				Array.Function.SetStatus("QueueSource", "file")
+				Array.Function.SetStatus("QueueSourcePath", Path)
+
+				return Array.State.QueueSource
+			end
 		end
 	end
+
+	if type(Array.Config.QueueUrls) == "table" then
+		for _, Url in next, Array.Config.QueueUrls do
+			Array.State.QueueSourceSuccess, Array.State.QueueSource = pcall(function()
+				return game:HttpGet(Url)
+			end)
+
+			if not Array.State.QueueSourceSuccess
+				or type(Array.State.QueueSource) ~= "string"
+				or #Array.State.QueueSource == 0
+			then
+				Array.State.QueueSourceSuccess = false
+				Array.State.QueueSource = nil
+
+				if type(request) == "function" then
+					Array.State.QueueSourceSuccess, Array.State.QueueSourceResponse = pcall(function()
+						return request({
+							Url = Url,
+							Method = "GET",
+						})
+					end)
+
+					Array.State.QueueSource = Array.State.QueueSourceResponse and Array.State.QueueSourceResponse.Body or nil
+				elseif type(syn) == "table" and type(syn.request) == "function" then
+					Array.State.QueueSourceSuccess, Array.State.QueueSourceResponse = pcall(function()
+						return syn.request({
+							Url = Url,
+							Method = "GET",
+						})
+					end)
+
+					Array.State.QueueSource = Array.State.QueueSourceResponse and Array.State.QueueSourceResponse.Body or nil
+				end
+			end
+
+			if Array.State.QueueSourceSuccess
+				and type(Array.State.QueueSource) == "string"
+				and #Array.State.QueueSource > 0
+				and string.find(Array.State.QueueSource, "HSKaitun", 1, true)
+			then
+				Array.Function.SetStatus("QueueSource", "url")
+				Array.Function.SetStatus("QueueSourceUrl", Url)
+
+				return Array.State.QueueSource
+			end
+		end
+	end
+
+	Array.Function.SetStatus("QueueSource", "stub")
 
 	return Array.QueueCode
 end
