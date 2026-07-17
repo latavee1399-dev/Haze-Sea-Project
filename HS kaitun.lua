@@ -1,5 +1,7 @@
 repeat task.wait() until game:IsLoaded()
 
+task.wait(10)
+
 local Array = {
 	Config = {
 		AllowedPlaceIds = {
