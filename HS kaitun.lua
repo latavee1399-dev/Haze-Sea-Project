@@ -347,6 +347,53 @@ pcall(function()
 		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/Haze%20Seas/HS%20Kaitun.lua",
 		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/Haze%20Seas/HS%20Kaitun.lua",
 	}
+	_G.HSKaitunWorld2QueueUrls = type(_G.HSKaitunWorld2QueueUrls) == "table" and _G.HSKaitunWorld2QueueUrls or {
+		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/Haze%20Sea2.lua",
+		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/Haze%20Sea2.lua",
+		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/Haze%20Seas/Haze%20Sea2.lua",
+		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/Haze%20Seas/Haze%20Sea2.lua",
+	}
+
+	local function IsWorld2Source(Source)
+		return type(Source) == "string"
+			and #Source > 0
+			and string.find(Source, "HazeSeasAutoFarm", 1, true) ~= nil
+			and string.find(Source, "14979402479", 1, true) ~= nil
+	end
+
+	local function FetchUrl(Url)
+		local Success, Source = pcall(function()
+			return game:HttpGet(Url)
+		end)
+
+		if Success and type(Source) == "string" and #Source > 0 then
+			return Source
+		end
+
+		if type(request) == "function" then
+			Success, _G.HSKaitunQueueResponse = pcall(function()
+				return request({
+					Url = Url,
+					Method = "GET",
+				})
+			end)
+
+			return _G.HSKaitunQueueResponse and _G.HSKaitunQueueResponse.Body or nil
+		end
+
+		if type(syn) == "table" and type(syn.request) == "function" then
+			Success, _G.HSKaitunQueueResponse = pcall(function()
+				return syn.request({
+					Url = Url,
+					Method = "GET",
+				})
+			end)
+
+			return _G.HSKaitunQueueResponse and _G.HSKaitunQueueResponse.Body or nil
+		end
+
+		return nil
+	end
 
 	if type(readfile) == "function" then
 		for _, Path in next, _G.HSKaitunQueuePaths do
@@ -378,40 +425,9 @@ pcall(function()
 			break
 		end
 
-		_G.HSKaitunQueueSuccess, _G.HSKaitunQueueSource = pcall(function()
-			return game:HttpGet(Url)
-		end)
+		_G.HSKaitunQueueSource = FetchUrl(Url)
 
-		if not _G.HSKaitunQueueSuccess
-			or type(_G.HSKaitunQueueSource) ~= "string"
-			or #_G.HSKaitunQueueSource == 0
-		then
-			_G.HSKaitunQueueSuccess = false
-			_G.HSKaitunQueueSource = nil
-
-			if type(request) == "function" then
-				_G.HSKaitunQueueSuccess, _G.HSKaitunQueueResponse = pcall(function()
-					return request({
-						Url = Url,
-						Method = "GET",
-					})
-				end)
-
-				_G.HSKaitunQueueSource = _G.HSKaitunQueueResponse and _G.HSKaitunQueueResponse.Body or nil
-			elseif type(syn) == "table" and type(syn.request) == "function" then
-				_G.HSKaitunQueueSuccess, _G.HSKaitunQueueResponse = pcall(function()
-					return syn.request({
-						Url = Url,
-						Method = "GET",
-					})
-				end)
-
-				_G.HSKaitunQueueSource = _G.HSKaitunQueueResponse and _G.HSKaitunQueueResponse.Body or nil
-			end
-		end
-
-		if _G.HSKaitunQueueSuccess
-			and type(_G.HSKaitunQueueSource) == "string"
+		if type(_G.HSKaitunQueueSource) == "string"
 			and #_G.HSKaitunQueueSource > 0
 			and string.find(_G.HSKaitunQueueSource, "HSKaitun", 1, true)
 		then
@@ -420,6 +436,26 @@ pcall(function()
 			if type(_G.HSKaitunQueueChunk) == "function" then
 				_G.HSKaitunReloaded = true
 				_G.HSKaitunQueueChunk()
+			end
+		end
+	end
+
+	if not _G.HSKaitunReloaded and game.PlaceId == 14979402479 then
+		for _, Url in next, _G.HSKaitunWorld2QueueUrls do
+			if _G.HSKaitunReloaded then
+				break
+			end
+
+			_G.HSKaitunWorld2QueueSource = FetchUrl(Url)
+
+			if IsWorld2Source(_G.HSKaitunWorld2QueueSource) then
+				_G.HSKaitunWorld2QueueChunk = loadstring(_G.HSKaitunWorld2QueueSource)
+
+				if type(_G.HSKaitunWorld2QueueChunk) == "function" then
+					_G.HSKaitunReloaded = true
+					_G.HSKaitunWorld2DirectLoaded = true
+					_G.HSKaitunWorld2QueueChunk()
+				end
 			end
 		end
 	end
@@ -6495,11 +6531,28 @@ function Array.Function.ConfigureWorld2AutoFarm()
 	return Array.State.World2AutoFarmConfig
 end
 
+function Array.Function.IsWorld2AutoFarmSource(Source)
+	if type(Source) ~= "string" or #Source == 0 then
+		return false
+	end
+
+	if string.find(Source, "404: Not Found", 1, true)
+		or string.find(string.lower(string.sub(Source, 1, 200)), "<html", 1, true)
+	then
+		return false
+	end
+
+	return string.find(Source, "HazeSeasAutoFarm", 1, true) ~= nil
+		and string.find(Source, "14979402479", 1, true) ~= nil
+end
+
 function Array.Function.GetWorld2AutoFarmSource()
-	if type(_G.HazeSeasAutoFarmSource) == "string" and #_G.HazeSeasAutoFarmSource > 0 then
+	if Array.Function.IsWorld2AutoFarmSource(_G.HazeSeasAutoFarmSource) then
 		Array.Function.SetStatus("World2AutoFarmRead", "external_source")
 
 		return _G.HazeSeasAutoFarmSource
+	elseif type(_G.HazeSeasAutoFarmSource) == "string" and #_G.HazeSeasAutoFarmSource > 0 then
+		Array.Function.SetStatus("World2AutoFarmExternalSource", "invalid")
 	end
 
 	if type(Array.Config.World2AutoFarm.ScriptUrls) == "table" then
@@ -6539,9 +6592,10 @@ function Array.Function.GetWorld2AutoFarmSource()
 				end
 			end
 
-			if not Array.State.World2AutoFarmHttpSuccess
-				or type(Array.State.World2AutoFarmSource) ~= "string"
-				or #Array.State.World2AutoFarmSource == 0
+			if (not Array.State.World2AutoFarmHttpSuccess
+					or type(Array.State.World2AutoFarmSource) ~= "string"
+					or #Array.State.World2AutoFarmSource == 0)
+				and type(request) == "function"
 			then
 				Array.State.World2AutoFarmHttpSuccess, Array.State.World2AutoFarmResponse = pcall(function()
 					return request({
@@ -6553,19 +6607,18 @@ function Array.Function.GetWorld2AutoFarmSource()
 				Array.State.World2AutoFarmSource = Array.State.World2AutoFarmResponse and Array.State.World2AutoFarmResponse.Body or nil
 			end
 
-			if Array.State.World2AutoFarmHttpSuccess
-				and type(Array.State.World2AutoFarmSource) == "string"
-				and #Array.State.World2AutoFarmSource > 0
-			then
+			if Array.Function.IsWorld2AutoFarmSource(Array.State.World2AutoFarmSource) then
 				Array.Function.SetStatus("World2AutoFarmRead", "url")
 				Array.Function.SetStatus("World2AutoFarmUrl", Url)
 
 				return Array.State.World2AutoFarmSource
+			elseif type(Array.State.World2AutoFarmSource) == "string" and #Array.State.World2AutoFarmSource > 0 then
+				Array.Function.SetStatus("World2AutoFarmUrlRejected", Url)
 			end
 		end
 	end
 
-	if type(Array.World2AutoFarmCode) == "string" and #Array.World2AutoFarmCode > 0 then
+	if Array.Function.IsWorld2AutoFarmSource(Array.World2AutoFarmCode) then
 		Array.Function.SetStatus("World2AutoFarmRead", "embedded")
 
 		return Array.World2AutoFarmCode
@@ -6577,14 +6630,13 @@ function Array.Function.GetWorld2AutoFarmSource()
 				return readfile(Path)
 			end)
 
-			if Array.State.World2AutoFarmReadSuccess
-				and type(Array.State.World2AutoFarmSource) == "string"
-				and #Array.State.World2AutoFarmSource > 0
-			then
+			if Array.Function.IsWorld2AutoFarmSource(Array.State.World2AutoFarmSource) then
 				Array.Function.SetStatus("World2AutoFarmRead", "loaded")
 				Array.Function.SetStatus("World2AutoFarmPath", Path)
 
 				return Array.State.World2AutoFarmSource
+			elseif type(Array.State.World2AutoFarmSource) == "string" and #Array.State.World2AutoFarmSource > 0 then
+				Array.Function.SetStatus("World2AutoFarmPathRejected", Path)
 			end
 		end
 	else
@@ -13496,6 +13548,7 @@ assert(type(Array.Function.FindWorld3ShrinePrompt) == "function", "world 3 shrin
 assert(type(Array.Function.TriggerWorld3ShrinePrompt) == "function", "world 3 shrine prompt trigger missing")
 assert(type(Array.Function.GetSwordMastery) == "function", "sword mastery helper missing")
 assert(type(Array.Function.StartWorld2AutoFarmScript) == "function", "world 2 auto farm loader missing")
+assert(type(Array.Function.IsWorld2AutoFarmSource) == "function" and Array.Function.IsWorld2AutoFarmSource(Array.World2AutoFarmCode), "world 2 source validator failed")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Config.PreferTool = \"Shusui\"", 1, true), "world 2 embedded auto farm missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "SwordMasterySwitch", 1, true), "world 2 sword mastery switch missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Sea3RequiredGems = 1000", 1, true), "world 2 sea3 gate missing")
