@@ -6033,6 +6033,7 @@ for Key, Value in next, {
 	kinggorilla = true,
 	marinecaptain = true,
 	minotaur = true,
+	tashii = true,
 	viceadmiral = true,
 	iceadmiral = true,
 	thundergod = true,
@@ -6054,9 +6055,24 @@ Array.Config.AutoFarm.RyummyShusui.BossName = tostring(Array.Config.AutoFarm.Ryu
 Array.Config.AutoFarm.RyummyShusui.SwordName = tostring(Array.Config.AutoFarm.RyummyShusui.SwordName or "Shusui")
 Array.Config.AutoFarm.QuestZoneNames = type(Array.Config.AutoFarm.QuestZoneNames) == "table" and Array.Config.AutoFarm.QuestZoneNames or {}
 for Key, Value in next, {
+	Thief = "Starter Island",
+	Bandit = "Starter Island",
+	["Bandit Boss"] = "Starter Island",
+	["Pirate Clown"] = "Clown Island",
+	["Clown Boss"] = "Clown Island",
+	Fishman = "Shark Park",
+	["Shark Boss"] = "Shark Park",
+	["Desert Thief"] = "Desert Ruins",
+	["Bomb Boss"] = "Desert Ruins",
+	["Krieg Pirate"] = "Sea Restaurant",
+	["Krieg Boss"] = "Sea Restaurant",
+	["Marine Recruit"] = "Logue Town",
+	Tashii = "Logue Town",
 	Monkey = "Tall Woods",
 	Gorilla = "Tall Woods",
 	["King Gorilla"] = "Tall Woods",
+	["Marine Grunt"] = "Marine Base Town",
+	["Marine Captain"] = "Marine Base Town",
 } do
 	if Array.Config.AutoFarm.QuestZoneNames[Key] == nil then
 		Array.Config.AutoFarm.QuestZoneNames[Key] = Value
@@ -6064,6 +6080,24 @@ for Key, Value in next, {
 end
 Array.Config.AutoFarm.QuestIslandNames = type(Array.Config.AutoFarm.QuestIslandNames) == "table" and Array.Config.AutoFarm.QuestIslandNames or {}
 for Key, Value in next, {
+	Thief = "Starter Island",
+	Bandit = "Starter Island",
+	["Bandit Boss"] = "Starter Island",
+	["Pirate Clown"] = "Clown Island",
+	["Clown Boss"] = "Clown Island",
+	Fishman = "Shark Park",
+	["Shark Boss"] = "Shark Park",
+	["Desert Thief"] = "Desert Ruins",
+	["Bomb Boss"] = "Desert Ruins",
+	["Krieg Pirate"] = "Sea Restaurant",
+	["Krieg Boss"] = "Sea Restaurant",
+	["Marine Recruit"] = "Logue Town",
+	Tashii = "Logue Town",
+	Monkey = "Tall Woods",
+	Gorilla = "Tall Woods",
+	["King Gorilla"] = "Tall Woods",
+	["Marine Grunt"] = "Marine Base Town",
+	["Marine Captain"] = "Marine Base Town",
 	Samurai = "Flower Capital",
 	["Strong Samurai"] = "Flower Capital",
 	Shinobi = "Flower Capital",
