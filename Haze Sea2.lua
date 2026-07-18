@@ -203,12 +203,6 @@ Config.MobNameAliases["Dragon Boss"] = Config.MobNameAliases["Dragon Boss"] or {
 	"Dragon Boss",
 	"DragonBoss",
 }
-Config.MobNameAliases["Sea Beast"] = Config.MobNameAliases["Sea Beast"] or {
-	"Sea Beast",
-	"SeaBeast",
-	"Sea Beast Boss",
-	"SeaBeast Boss",
-}
 Config.PeanutPirateSkipUntilLevel = tonumber(Config.PeanutPirateSkipUntilLevel) or 3200
 Config.ForceFarmLevelEnabled = Config.ForceFarmLevelEnabled == true
 Config.ForceFarmLevel = tonumber(Config.ForceFarmLevel) or 2850
@@ -240,15 +234,9 @@ Config.DragonIslandLock.RosterRefreshDelay = math.max(tonumber(Config.DragonIsla
 Config.DragonIslandLock.QuestRotateDelay = math.max(tonumber(Config.DragonIslandLock.QuestRotateDelay) or 2, 0.25)
 Config.DragonIslandLock.WorkspaceSearchDepth = math.max(1, math.floor(tonumber(Config.DragonIslandLock.WorkspaceSearchDepth) or 8))
 Config.DragonIslandLock.SuperBossPriority = Config.DragonIslandLock.SuperBossPriority ~= false
-Config.DragonIslandLock.SeaBeastPriority = Config.DragonIslandLock.SeaBeastPriority ~= false
 Config.DragonIslandLock.SuperBossCheckDelay = math.max(tonumber(Config.DragonIslandLock.SuperBossCheckDelay) or 1, 0.25)
 Config.DragonIslandLock.SuperBossSearchDepth = math.max(1, math.floor(tonumber(Config.DragonIslandLock.SuperBossSearchDepth) or 10))
 Config.DragonIslandLock.SuperBossWaterProbeSize = math.max(4, tonumber(Config.DragonIslandLock.SuperBossWaterProbeSize) or 12)
-Config.DragonIslandLock.SeaBeastNames = type(Config.DragonIslandLock.SeaBeastNames) == "table" and Config.DragonIslandLock.SeaBeastNames or {}
-Config.DragonIslandLock.SeaBeastNames[1] = "Sea Beast"
-Config.DragonIslandLock.SeaBeastNames[2] = "SeaBeast"
-Config.DragonIslandLock.SeaBeastNames[3] = "Sea Beast Boss"
-Config.DragonIslandLock.SeaBeastNames[4] = "SeaBeast Boss"
 Config.DragonIslandLock.SuperBossNames = type(Config.DragonIslandLock.SuperBossNames) == "table" and Config.DragonIslandLock.SuperBossNames or {}
 Config.DragonIslandLock.SuperBossNames[1] = "Enma Boss"
 Config.DragonIslandLock.SuperBossNames[2] = "Zenith Boss"
@@ -656,8 +644,6 @@ Config.DragonIsland.LastQuestSelectAt = tonumber(Config.DragonIsland.LastQuestSe
 Config.DragonIsland.QuestIndex = math.floor(tonumber(Config.DragonIsland.QuestIndex) or 0)
 Config.DragonIsland.LastSuperBossCheck = tonumber(Config.DragonIsland.LastSuperBossCheck) or 0
 Config.DragonIsland.SuperBossTarget = nil
-Config.DragonIsland.LastSeaBeastCheck = tonumber(Config.DragonIsland.LastSeaBeastCheck) or 0
-Config.DragonIsland.SeaBeastTarget = nil
 
 local BossQuestNames = {
 	["bandit boss"] = true,
@@ -3290,40 +3276,6 @@ function Config.DragonIsland.IsQuestObjective(objective)
 	return false, nil
 end
 
-function Config.DragonIsland.IsSeaBeastName(value)
-	for _, targetName in next, Config.DragonIslandLock.SeaBeastNames do
-		if Config.DragonIsland.MatchesConfiguredName(value, targetName) then
-			return true, targetName
-		end
-	end
-
-	return false, nil
-end
-
-function Config.DragonIsland.IsSeaBeastInterruptAllowed(level, objective)
-	if not Config.DragonIslandLock.SeaBeastPriority or not Config.DragonIsland.IsActive(level) then
-		return false
-	end
-
-	if Config.DragonIsland.IsQuestObjective(objective) then
-		return true
-	end
-
-	if CurrentQuest and Config.DragonIsland.IsQuestObjective(CurrentQuest.MobName) then
-		return true
-	end
-
-	if ActiveBossFallbackQuest and Config.DragonIsland.IsQuestObjective(ActiveBossFallbackQuest.MobName) then
-		return true
-	end
-
-	if CurrentTarget and Config.DragonIsland.IsQuestObjective(getMobName(CurrentTarget)) then
-		return true
-	end
-
-	return false
-end
-
 function Config.DragonIsland.GetQuestByName(targetName)
 	local best = nil
 	local level = getLevel()
@@ -3919,122 +3871,6 @@ function Config.DragonIsland.IsSuperBossModel(model)
 	local bossLike = markerText:find("boss", 1, true) ~= nil
 
 	return bossLike and Config.DragonIsland.IsWaterSuperBoss(model, markerText)
-end
-
-function Config.DragonIsland.IsSeaBeastModel(model)
-	if not model
-		or not model:IsA("Model")
-		or model == LocalPlayer.Character
-		or Players:GetPlayerFromCharacter(model)
-		or not getHumanoid(model)
-		or not getRootPart(model)
-		or not isAliveMob(model)
-	then
-		return false
-	end
-
-	for _, mobName in next, getMobNames(model) do
-		if Config.DragonIsland.IsSeaBeastName(mobName) then
-			return true
-		end
-	end
-
-	local markerText = Config.DragonIsland.GetSuperBossMarkerText(model)
-	local compactText = markerText:gsub("[^%w]", "")
-
-	return compactText:find("seabeast", 1, true) ~= nil
-end
-
-function Config.DragonIsland.FindSeaBeast()
-	if Config.DragonIsland.SeaBeastTarget
-		and isAliveMob(Config.DragonIsland.SeaBeastTarget)
-		and Config.DragonIsland.IsSeaBeastModel(Config.DragonIsland.SeaBeastTarget)
-	then
-		return Config.DragonIsland.SeaBeastTarget
-	end
-
-	if tick() - Config.DragonIsland.LastSeaBeastCheck < Config.DragonIslandLock.SuperBossCheckDelay then
-		return nil
-	end
-
-	Config.DragonIsland.LastSeaBeastCheck = tick()
-	Config.DragonIsland.SeaBeastTarget = nil
-
-	local _, _, playerRoot = getCharacter()
-	local closestDistance = math.huge
-
-	local function scan(container, depth)
-		if not container or depth > Config.DragonIslandLock.SuperBossSearchDepth then
-			return
-		end
-
-		for _, child in next, container:GetChildren() do
-			if child:IsA("Model") and Config.DragonIsland.IsSeaBeastModel(child) then
-				local root = getRootPart(child)
-				local distance = root and playerRoot and (root.Position - playerRoot.Position).Magnitude or math.huge
-
-				if distance < closestDistance then
-					Config.DragonIsland.SeaBeastTarget = child
-					closestDistance = distance
-				end
-			end
-
-			if child:IsA("Folder") or child:IsA("Model") then
-				scan(child, depth + 1)
-			end
-		end
-	end
-
-	scan(workspace, 0)
-
-	setStatus("SeaBeastCheckAt", Config.DragonIsland.LastSeaBeastCheck)
-	setStatus("SeaBeastFound", Config.DragonIsland.SeaBeastTarget and Config.DragonIsland.SeaBeastTarget.Name or nil)
-	setStatus("SeaBeastPath", Config.DragonIsland.SeaBeastTarget and Config.DragonIsland.SeaBeastTarget:GetFullName() or nil)
-
-	return Config.DragonIsland.SeaBeastTarget
-end
-
-function Config.DragonIsland.HandleSeaBeastPriority(level, objective)
-	if not Config.DragonIsland.IsSeaBeastInterruptAllowed(level, objective) then
-		return false
-	end
-
-	local target = Config.DragonIsland.FindSeaBeast()
-
-	if not target then
-		setStatus("SeaBeastPriority", "waiting_spawn")
-
-		return false
-	end
-
-	CurrentTarget = target
-	setStatus("SeaBeastPriority", "fighting")
-	setStatus("SuperBossPriority", "sea_beast")
-	setStatus("State", "farming_sea_beast")
-	setStatus("SelectedQuestReason", "sea_beast_spawned")
-	setStatus("LastTargetSearch", target.Name)
-	setStatus("LastTargetFound", target.Name)
-	setStatus("LastTargetPath", target:GetFullName())
-
-	local _, _, root = getCharacter()
-	local targetRoot = getRootPart(target)
-
-	if not targetRoot then
-		return true
-	end
-
-	local targetCFrame = getHoverCFrame(targetRoot)
-	local distance = root and (root.Position - targetRoot.Position).Magnitude or math.huge
-
-	if distance > Config.DirectLockDistance then
-		travelToCFrame(targetCFrame)
-	else
-		lockHoverCFrame(targetRoot, true)
-	end
-
-	attackTarget(target)
-
-	return true
 end
 
 function Config.DragonIsland.FindSuperBoss()
@@ -4823,7 +4659,7 @@ local function shouldRunSea3Unlock(level)
 	return Config.Sea3Gate.IsReady(level)
 end
 
-local function queueSea3Runner()
+function Config.Sea3Gate.QueueRunner()
 	local queueOnTeleport = nil
 
 	if type(queue_on_teleport) == "function" then
@@ -4851,7 +4687,7 @@ local function queueSea3Runner()
 	return success
 end
 
-local function requestSea3Teleport()
+function Config.Sea3Gate.RequestTeleport()
 	local workspaceSeaIndex = tonumber(workspace:GetAttribute("Sea") or 0) or 0
 
 	if workspaceSeaIndex >= 3 then
@@ -4876,7 +4712,7 @@ local function requestSea3Teleport()
 	end
 
 	LastSea3TeleportAt = tick()
-	queueSea3Runner()
+	Config.Sea3Gate.QueueRunner()
 
 	local teleportTarget = getSea3TeleportTarget()
 	local teleportRemote = getTeleportRemote(teleportTarget)
@@ -4931,7 +4767,7 @@ local function runSea3UnlockFlow(level)
 
 	if isSea3Unlocked() then
 		CurrentTarget = nil
-		return requestSea3Teleport()
+		return Config.Sea3Gate.RequestTeleport()
 	end
 
 	local questState = getQuestState()
@@ -4984,7 +4820,7 @@ local function runSea3UnlockFlow(level)
 	return true
 end
 
-local function antiAfkPulse(reason)
+function Config.AntiAfkPulse(reason)
 	if not Config.AntiAfk then
 		return
 	end
@@ -5012,13 +4848,13 @@ local function antiAfkPulse(reason)
 end
 
 table.insert(Connections, LocalPlayer.Idled:Connect(function()
-	antiAfkPulse("idled")
+	Config.AntiAfkPulse("idled")
 end))
 
 task.spawn(function()
 	while isRunning() do
 		task.wait(Config.AntiAfkInterval)
-		antiAfkPulse("interval")
+		Config.AntiAfkPulse("interval")
 	end
 end)
 
@@ -5077,7 +4913,8 @@ assert(type(findMob) == "function", "mob finder missing")
 assert(type(cancelActiveQuest) == "function", "quest cancel helper missing")
 assert(type(fightRedEmperorTarget) == "function", "red emperor fight helper missing")
 assert(type(runSea3UnlockFlow) == "function", "sea3 unlock helper missing")
-assert(type(queueSea3Runner) == "function", "sea3 queue helper missing")
+assert(type(Config.Sea3Gate.QueueRunner) == "function", "sea3 queue helper missing")
+assert(type(Config.Sea3Gate.RequestTeleport) == "function", "sea3 teleport request helper missing")
 assert(type(refundStatsBeforeUpgrade) == "function", "stat refund helper missing")
 assert(type(RefundStats.GetPoints) == "function", "refund point helper missing")
 assert(type(RefundStats.FireEvent) == "function", "stats refund event helper missing")
@@ -5085,7 +4922,6 @@ assert(type(PriorityBoss.Handle) == "function", "priority boss handler missing")
 assert(type(Config.DragonIsland.SelectQuest) == "function", "dragon island quest selector missing")
 assert(type(Config.DragonIsland.FindTargetForObjective) == "function", "dragon island split target helper missing")
 assert(type(Config.DragonIsland.HandleAwakenBoss) == "function", "dragon boss handler missing")
-assert(type(Config.DragonIsland.HandleSeaBeastPriority) == "function", "sea beast priority handler missing")
 assert(type(Config.DragonIsland.HandleSuperBoss) == "function", "dragon island super boss handler missing")
 assert(type(equipInventoryItem) == "function", "inventory equip helper missing")
 assert(type(clearHoverGyro) == "function", "world 2 hover gyro cleanup missing")
@@ -5102,7 +4938,6 @@ assert(Config.PriorityBosses[1] == Config.EnmaBossPriority and Config.PriorityBo
 assert(Config.DragonIslandLock.StartLevel == 3050 and Config.DragonIslandLock.EndLevel == 4500, "dragon island level lock missing")
 assert(Config.DragonIslandLock.AwakenBossName == "Dragon Boss" and Config.DragonIslandLock.AwakenSoulTarget == 999, "dragon awaken boss config missing")
 assert(Config.DragonIslandLock.QuestNames[1] == "Elite Beast" and Config.DragonIslandLock.QuestNames[2] == "Beast Pirate", "dragon island quest targets missing")
-assert(Config.DragonIslandLock.SeaBeastPriority == true and #Config.DragonIslandLock.SeaBeastNames >= 2, "sea beast priority config missing")
 assert(Config.DragonIslandLock.SuperBossPriority == true and #Config.DragonIslandLock.SuperBossNames >= 10, "dragon island super boss priority config missing")
 assert(Config.SwordTopDownHover == true and Config.SwordHoverPitch == -90, "world 2 sword top-down hover missing")
 assert(Config.SwordHoverGyroMaxTorque >= 10000, "world 2 sword hover gyro config missing")
@@ -5148,7 +4983,11 @@ task.spawn(function()
 				continue
 			end
 
-			if Config.DragonIsland.HandleSeaBeastPriority(level, objective) then
+			if (Config.DragonIsland.IsQuestObjective(objective)
+				or (CurrentQuest and Config.DragonIsland.IsQuestObjective(CurrentQuest.MobName))
+				or (CurrentTarget and Config.DragonIsland.IsQuestObjective(getMobName(CurrentTarget))))
+				and Config.DragonIsland.HandleSuperBoss(level)
+			then
 				task.wait(Config.LoopDelay)
 				continue
 			end
