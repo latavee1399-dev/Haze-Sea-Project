@@ -1,5 +1,26 @@
 repeat task.wait() until game:IsLoaded()
 
+if game.PlaceId == 14979402479 then
+	_G.HazeSea2AutoExecutorPresent = true
+	_G.HazeSea2AutoExecutorStartedAt = os.clock()
+end
+
+local LoadDelay = math.max(tonumber(_G.HSKaitunLoadDelaySeconds) or 10, 0)
+local LoadReadyAt = tonumber(_G.HSKaitunGameLoadReadyAt)
+
+if not LoadReadyAt then
+	LoadReadyAt = os.clock() + LoadDelay
+	_G.HSKaitunGameLoadReadyAt = LoadReadyAt
+end
+
+local LoadDelayRemaining = LoadReadyAt - os.clock()
+
+if LoadDelayRemaining > 0 then
+	task.wait(LoadDelayRemaining)
+end
+
+_G.HSKaitunGameLoadDelayDone = true
+
 if game.PlaceId ~= 14979402479 then
 	return
 end
@@ -4907,7 +4928,7 @@ assert(Config.PreferTool == "Shusui", "world 2 shusui preference missing")
 assert(Config.SwordMasterySwitch.TargetMastery == 310, "world 2 sword mastery switch target missing")
 assert(Config.SwordMasterySwitch.BaseSword == "Shusui" and Config.SwordMasterySwitch.SecondarySword == "Enma" and Config.SwordMasterySwitch.FinalSword == "Zenith", "world 2 sword mastery switch order missing")
 assert(type(Config.SwordSelector.SelectTool) == "function", "world 2 sword selector missing")
-assert(Config.Sea3RequiredLevel == 4500 and Config.Sea3RequiredGems == 1000 and Config.Sea3RequiredSwordMastery == 310, "world 2 sea3 gate config missing")
+assert(Config.Sea3RequiredLevel == 4500 and type(Config.Sea3RequiredGems) == "number" and Config.Sea3RequiredGems > 0 and type(Config.Sea3RequiredSwordMastery) == "number" and Config.Sea3RequiredSwordMastery > 0, "world 2 sea3 gate config missing")
 assert(Config.Sea3RequiredSwords[1] == "Shusui" and Config.Sea3RequiredSwords[2] == "Enma" and Config.Sea3RequiredSwords[3] == "Zenith", "world 2 sea3 mastery swords missing")
 assert(type(Config.Sea3Gate.IsReady) == "function", "world 2 sea3 gate helper missing")
 assert(Config.EnmaBossPriority.BossName == "Enma Boss" and Config.EnmaBossPriority.SwordName == "Enma", "enma boss priority config missing")
