@@ -186,10 +186,12 @@ Config.MobNameAliases = Config.MobNameAliases or {}
 Config.MobNameAliases["Enma Boss"] = Config.MobNameAliases["Enma Boss"] or {
 	"Enma Boss",
 	"EnmaBoss",
+	"Enma",
 }
 Config.MobNameAliases["Zenith Boss"] = Config.MobNameAliases["Zenith Boss"] or {
 	"Zenith Boss",
 	"ZenithBoss",
+	"Zenith",
 }
 Config.MobNameAliases["Elite Beast"] = Config.MobNameAliases["Elite Beast"] or {
 	"Elite Beast",
@@ -203,6 +205,38 @@ Config.MobNameAliases["Dragon Boss"] = Config.MobNameAliases["Dragon Boss"] or {
 	"Dragon Boss",
 	"DragonBoss",
 }
+Config.MobNameAliases["Favela Shanks' Mother"] = Config.MobNameAliases["Favela Shanks' Mother"] or {
+	"Favela Shanks' Mother",
+	"Favela Shanks Mother",
+	"Shanks Mother",
+}
+local function ensureMobNameAlias(targetName, aliasName)
+	local aliases = Config.MobNameAliases[targetName]
+
+	if type(aliases) ~= "table" then
+		aliases = { targetName }
+		Config.MobNameAliases[targetName] = aliases
+	end
+
+	for _, currentName in next, aliases do
+		if currentName == aliasName then
+			return
+		end
+	end
+
+	table.insert(aliases, aliasName)
+end
+
+for _, aliasData in next, {
+	{ "Enma Boss", "Enma" },
+	{ "Zenith Boss", "Zenith" },
+	{ "Elite Beast", "Elite Beasts" },
+	{ "Beast Pirate", "Beast Pirates" },
+	{ "Favela Shanks' Mother", "Favela Shanks Mother" },
+	{ "Favela Shanks' Mother", "Shanks Mother" },
+} do
+	ensureMobNameAlias(aliasData[1], aliasData[2])
+end
 Config.PeanutPirateSkipUntilLevel = tonumber(Config.PeanutPirateSkipUntilLevel) or 3200
 Config.ForceFarmLevelEnabled = Config.ForceFarmLevelEnabled == true
 Config.ForceFarmLevel = tonumber(Config.ForceFarmLevel) or 2850
@@ -242,12 +276,16 @@ Config.DragonIslandLock.SuperBossNames[1] = "Enma Boss"
 Config.DragonIslandLock.SuperBossNames[2] = "Zenith Boss"
 Config.DragonIslandLock.SuperBossNames[3] = "Sea Beast"
 Config.DragonIslandLock.SuperBossNames[4] = "Seabeast"
-Config.DragonIslandLock.SuperBossNames[5] = "Ghost Ship"
-Config.DragonIslandLock.SuperBossNames[6] = "Cthulhu"
-Config.DragonIslandLock.SuperBossNames[7] = "Kraken"
-Config.DragonIslandLock.SuperBossNames[8] = "Leviathan"
-Config.DragonIslandLock.SuperBossNames[9] = "Sea King"
-Config.DragonIslandLock.SuperBossNames[10] = "Sea Monster"
+Config.DragonIslandLock.SuperBossNames[5] = "Angry Sea Beast"
+Config.DragonIslandLock.SuperBossNames[6] = "Red Sea Beast"
+Config.DragonIslandLock.SuperBossNames[7] = "Ghost Ship"
+Config.DragonIslandLock.SuperBossNames[8] = "Cthulhu"
+Config.DragonIslandLock.SuperBossNames[9] = "Kraken"
+Config.DragonIslandLock.SuperBossNames[10] = "Leviathan"
+Config.DragonIslandLock.SuperBossNames[11] = "Sea King"
+Config.DragonIslandLock.SuperBossNames[12] = "Sea Monster"
+Config.DragonIslandLock.SuperBossNames[13] = "Dough Boss"
+Config.DragonIslandLock.SuperBossNames[14] = "Favela Shanks' Mother"
 Config.Sea3Unlock = Config.Sea3Unlock ~= false
 Config.Sea3RequiredLevel = 4500
 Config.Sea3RequiredGems = 2000
@@ -1781,12 +1819,38 @@ local function findQuestByObjective(objective)
 	return best
 end
 
+local function triggerQuestGiverPrompt(giver)
+	local prompt = giver and giver:FindFirstChildWhichIsA("ProximityPrompt", true)
+	local fired = false
+
+	if not prompt then
+		return false
+	end
+
+	pcall(function()
+		if typeof(fireproximityprompt) == "function" then
+			fireproximityprompt(prompt)
+			fired = true
+		end
+	end)
+
+	if not fired and typeof(firesignal) == "function" then
+		pcall(function()
+			firesignal(prompt.Triggered, LocalPlayer)
+			fired = true
+		end)
+	end
+
+	return fired
+end
+
 local function acceptQuest(quest)
 	if not quest then
 		return false, "NoQuest"
 	end
 
 	moveNearInstance(quest.Giver)
+	triggerQuestGiverPrompt(quest.Giver)
 	task.wait(0.25)
 
 	local ok, result = pcall(function()
@@ -1809,7 +1873,10 @@ local function acceptQuest(quest)
 		end
 	end
 
-	return result == true, result
+	triggerQuestGiverPrompt(quest.Giver)
+	task.wait(0.2)
+
+	return result == true or hasActiveQuest(), result
 end
 
 local function getQuestCloseButton()
@@ -1967,6 +2034,16 @@ local function normalizeMobName(name)
 		:gsub("%d+$", "")
 end
 
+local function normalizeMobNameLoose(name)
+	local key = normalizeMobName(name)
+
+	if #key > 3 and key:sub(-1) == "s" and key:sub(-2) ~= "ss" then
+		return key:sub(1, -2)
+	end
+
+	return key
+end
+
 local function addMobName(names, seen, name)
 	name = trimName(stripRichText(name))
 
@@ -2064,6 +2141,8 @@ local function mobNameMatchesTarget(mobName, target)
 	local lowerTarget = string.lower(target)
 	local normalizedName = normalizeMobName(name)
 	local normalizedTarget = normalizeMobName(target)
+	local looseName = normalizeMobNameLoose(name)
+	local looseTarget = normalizeMobNameLoose(target)
 
 	-- Exact match first (most accurate)
 	if lowerName == lowerTarget or lowerStrippedName == lowerTarget then
@@ -2072,6 +2151,10 @@ local function mobNameMatchesTarget(mobName, target)
 
 	-- Exact normalized match
 	if normalizedName ~= "" and normalizedName == normalizedTarget then
+		return true
+	end
+
+	if looseName ~= "" and looseName == looseTarget then
 		return true
 	end
 
@@ -3245,11 +3328,25 @@ function Config.DragonIsland.IsActive(level)
 		)
 end
 
+function Config.DragonIsland.CanHandleBossPriority(level)
+	level = tonumber(level) or getLevel()
+
+	return Config.DragonIslandLock.Enabled
+		and game.PlaceId == 14979402479
+		and level >= Config.DragonIslandLock.StartLevel
+end
+
 function Config.DragonIsland.MatchesConfiguredName(value, targetName)
 	local valueKey = normalizeMobName(value)
 	local targetKey = normalizeMobName(targetName)
+	local looseValueKey = normalizeMobNameLoose(value)
+	local looseTargetKey = normalizeMobNameLoose(targetName)
 
 	if valueKey ~= "" and valueKey == targetKey then
+		return true
+	end
+
+	if looseValueKey ~= "" and looseValueKey == looseTargetKey then
 		return true
 	end
 
@@ -3258,6 +3355,10 @@ function Config.DragonIsland.MatchesConfiguredName(value, targetName)
 	if type(aliases) == "table" then
 		for _, alias in next, aliases do
 			if valueKey ~= "" and valueKey == normalizeMobName(alias) then
+				return true
+			end
+
+			if looseValueKey ~= "" and looseValueKey == normalizeMobNameLoose(alias) then
 				return true
 			end
 		end
@@ -3645,7 +3746,7 @@ function Config.DragonIsland.FindAwakenBoss()
 end
 
 function Config.DragonIsland.HandleAwakenBoss(level)
-	if not Config.DragonIsland.IsActive(level) then
+	if not Config.DragonIsland.CanHandleBossPriority(level) then
 		return false
 	end
 
@@ -3751,9 +3852,14 @@ function Config.DragonIsland.IsKnownSuperBoss(model)
 
 	for _, mobName in next, mobNames do
 		local mobKey = normalizeMobName(mobName)
+		local looseMobKey = normalizeMobNameLoose(mobName)
 
 		for _, bossName in next, Config.DragonIslandLock.SuperBossNames do
 			if mobKey ~= "" and mobKey == normalizeMobName(bossName) then
+				return true
+			end
+
+			if looseMobKey ~= "" and looseMobKey == normalizeMobNameLoose(bossName) then
 				return true
 			end
 		end
@@ -3923,7 +4029,7 @@ function Config.DragonIsland.FindSuperBoss()
 end
 
 function Config.DragonIsland.HandleSuperBoss(level)
-	if not Config.DragonIslandLock.SuperBossPriority or not Config.DragonIsland.IsActive(level) then
+	if not Config.DragonIslandLock.SuperBossPriority or not Config.DragonIsland.CanHandleBossPriority(level) then
 		return false
 	end
 
@@ -4923,6 +5029,7 @@ assert(type(Config.DragonIsland.SelectQuest) == "function", "dragon island quest
 assert(type(Config.DragonIsland.FindTargetForObjective) == "function", "dragon island split target helper missing")
 assert(type(Config.DragonIsland.HandleAwakenBoss) == "function", "dragon boss handler missing")
 assert(type(Config.DragonIsland.HandleSuperBoss) == "function", "dragon island super boss handler missing")
+assert(type(Config.DragonIsland.CanHandleBossPriority) == "function", "dragon island boss priority gate missing")
 assert(type(equipInventoryItem) == "function", "inventory equip helper missing")
 assert(type(clearHoverGyro) == "function", "world 2 hover gyro cleanup missing")
 assert(Config.PreferTool == "Shusui", "world 2 shusui preference missing")
@@ -4939,6 +5046,8 @@ assert(Config.DragonIslandLock.StartLevel == 3050 and Config.DragonIslandLock.En
 assert(Config.DragonIslandLock.AwakenBossName == "Dragon Boss" and Config.DragonIslandLock.AwakenSoulTarget == 999, "dragon awaken boss config missing")
 assert(Config.DragonIslandLock.QuestNames[1] == "Elite Beast" and Config.DragonIslandLock.QuestNames[2] == "Beast Pirate", "dragon island quest targets missing")
 assert(Config.DragonIslandLock.SuperBossPriority == true and #Config.DragonIslandLock.SuperBossNames >= 10, "dragon island super boss priority config missing")
+assert(normalizeMobNameLoose("Elite Beasts") == normalizeMobNameLoose("Elite Beast"), "plural mob match missing")
+assert(Config.DragonIsland.MatchesConfiguredName("Beast Pirates", "Beast Pirate"), "dragon island plural quest alias missing")
 assert(Config.SwordTopDownHover == true and Config.SwordHoverPitch == -90, "world 2 sword top-down hover missing")
 assert(Config.SwordHoverGyroMaxTorque >= 10000, "world 2 sword hover gyro config missing")
 assert(Config.StatOrder[1] == "Sword" and Config.StatOrder[2] == "Defense" and Config.StatOrder[3] == "Fruit", "world 2 stat order missing")
@@ -4978,20 +5087,6 @@ task.spawn(function()
 			setStatus("ActiveTarget", questState.Target)
 			ensureAutoHaki(CurrentTarget)
 
-			if runSea3UnlockFlow(level) then
-				task.wait(Config.LoopDelay)
-				continue
-			end
-
-			if (Config.DragonIsland.IsQuestObjective(objective)
-				or (CurrentQuest and Config.DragonIsland.IsQuestObjective(CurrentQuest.MobName))
-				or (CurrentTarget and Config.DragonIsland.IsQuestObjective(getMobName(CurrentTarget))))
-				and Config.DragonIsland.HandleSuperBoss(level)
-			then
-				task.wait(Config.LoopDelay)
-				continue
-			end
-
 			if PriorityBoss.Handle() then
 				task.wait(Config.LoopDelay)
 				continue
@@ -5003,6 +5098,11 @@ task.spawn(function()
 			end
 
 			if Config.DragonIsland.HandleSuperBoss(level) then
+				task.wait(Config.LoopDelay)
+				continue
+			end
+
+			if runSea3UnlockFlow(level) then
 				task.wait(Config.LoopDelay)
 				continue
 			end
