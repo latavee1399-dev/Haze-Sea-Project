@@ -76,6 +76,7 @@ Config.AttackBurstDelay = math.min(Config.AttackBurstDelay or 0.02, 0.02)
 Config.LoopDelay = math.min(Config.LoopDelay or 0.08, 0.08)
 Config.TargetRefreshDelay = Config.TargetRefreshDelay or 0.75
 Config.QuestRetryDelay = Config.QuestRetryDelay or 2
+Config.QuestTimeoutFarmDelay = math.max(tonumber(Config.QuestTimeoutFarmDelay) or 10, Config.QuestRetryDelay)
 Config.ContainerRefreshDelay = Config.ContainerRefreshDelay or 10
 Config.MobSearchDepth = Config.MobSearchDepth or 4
 Config.MobSpawnProbeMinLevel = Config.MobSpawnProbeMinLevel or 3450
@@ -95,6 +96,7 @@ Config.FastTravel = Config.FastTravel ~= false
 Config.TravelSpeed = math.max(Config.TravelSpeed or 650, 650)
 Config.TravelStepDelay = math.min(Config.TravelStepDelay or 0.015, 0.015)
 Config.TravelMaxStep = math.max(Config.TravelMaxStep or 22, 22)
+Config.TravelArriveDistance = math.max(tonumber(Config.TravelArriveDistance) or 12, 3)
 Config.SafePositionFloor = Config.SafePositionFloor or -10000
 Config.PreferTool = "Shusui"
 Config.RequirePreferTool = Config.RequirePreferTool ~= false
@@ -159,7 +161,7 @@ Config.NpcActivationCooldown = math.max(tonumber(Config.NpcActivationCooldown) o
 Config.NpcActivationBurstLimit = math.max(1, math.floor(tonumber(Config.NpcActivationBurstLimit) or 16))
 Config.NpcActivationLast = type(Config.NpcActivationLast) == "table" and Config.NpcActivationLast or {}
 Config.UseLoaderBypassTeleport = Config.UseLoaderBypassTeleport ~= false
-Config.BypassTravelMinDistance = math.max(tonumber(Config.BypassTravelMinDistance) or 120, 0)
+Config.BypassTravelMinDistance = math.max(tonumber(Config.BypassTravelMinDistance) or 850, 500)
 Config.BypassTravelSettleDelay = math.max(tonumber(Config.BypassTravelSettleDelay) or 0.2, 0)
 Config.ClickPlay = Config.ClickPlay ~= false
 Config.SearchPlayDelay = Config.SearchPlayDelay or 0.5
@@ -660,6 +662,8 @@ local LastQuestCacheBuild = 0
 local LastContainerScan = 0
 local LastAttack = 0
 local LastQuestAttempt = 0
+local TimeoutFarmQuest = nil
+local TimeoutFarmUntil = 0
 local LastTargetSearch = 0
 local LastHoverLock = 0
 local LastHoverPosition = nil
@@ -1644,7 +1648,7 @@ local function travelToCFrame(destination, forceBypass)
 		local delta = destination.Position - root.Position
 		local distance = delta.Magnitude
 
-		if distance <= Config.TeleportDistance then
+		if distance <= Config.TravelArriveDistance then
 			reached = true
 			break
 		end
@@ -2004,7 +2008,7 @@ local function acceptQuest(quest)
 	end
 
 	syncAndActivateQuestIsland(quest, quest.MobName, true)
-	moveNearInstance(quest.Giver, true)
+	moveNearInstance(quest.Giver)
 	syncAndActivateQuestIsland(quest, quest.MobName, true)
 	Config.TriggerQuestGiverPrompt(quest.Giver)
 	task.wait(0.25)
@@ -2795,7 +2799,7 @@ local function moveNearQuestSpawnPoint(quest, targetName)
 		setStatus("LastSpawnMoveScanCount", 1)
 		setStatus("LastSpawnMoveIndex", 1)
 
-		local moved = travelToCFrame(configuredTravelCFrame, true)
+		local moved = travelToCFrame(configuredTravelCFrame)
 		syncAndActivateQuestIsland(quest, targetName, true)
 		refreshNpcContainers(true)
 
@@ -5427,7 +5431,14 @@ task.spawn(function()
 			if objective == "" then
 				local questReason = nil
 
-				CurrentQuest, questReason = selectFarmQuest(farmLevel)
+				if TimeoutFarmQuest and tick() < TimeoutFarmUntil then
+					CurrentQuest = TimeoutFarmQuest
+					questReason = "quest_timeout_farm"
+				else
+					TimeoutFarmQuest = nil
+					CurrentQuest, questReason = selectFarmQuest(farmLevel)
+				end
+
 				setStatus("SelectedQuest", CurrentQuest and (CurrentQuest.LevelName .. " " .. CurrentQuest.MobName) or nil)
 				setStatus("SelectedQuestReason", questReason or "normal")
 
@@ -5441,6 +5452,9 @@ task.spawn(function()
 					debugPrint("Quest", CurrentQuest.LevelName, CurrentQuest.MobName, questReason or "normal", accepted, result)
 
 					if accepted then
+						TimeoutFarmQuest = nil
+						TimeoutFarmUntil = 0
+						setStatus("QuestRetryHold", nil)
 						task.wait(0.35)
 						questState = getQuestState()
 						objective = questState.Objective ~= "" and questState.Objective or CurrentQuest.MobName
@@ -5460,7 +5474,16 @@ task.spawn(function()
 							LastTargetSearch = tick()
 						end
 					else
-						moveNearInstance(CurrentQuest.Giver)
+						if tostring(result) == "InvokeTimeout" then
+							TimeoutFarmQuest = CurrentQuest
+							TimeoutFarmUntil = tick() + Config.QuestTimeoutFarmDelay
+							LastQuestAttempt = tick() + math.max(Config.QuestTimeoutFarmDelay - Config.QuestRetryDelay, 0)
+							setStatus("QuestRetryHold", Config.QuestTimeoutFarmDelay)
+							setStatus("QuestRetryHoldTarget", CurrentQuest.MobName)
+						else
+							moveNearInstance(CurrentQuest.Giver)
+						end
+
 						objective = CurrentQuest.MobName
 					end
 				elseif CurrentQuest then
