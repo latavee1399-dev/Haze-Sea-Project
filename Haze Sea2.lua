@@ -115,6 +115,7 @@ Config.EnmaBossPriority.WorkspaceSearchDepth = math.max(1, math.floor(tonumber(C
 Config.EnmaBossPriority.StatusPrefix = tostring(Config.EnmaBossPriority.StatusPrefix or "Enma")
 Config.EnmaBossPriority.StateName = tostring(Config.EnmaBossPriority.StateName or "farming_enma_boss")
 Config.EnmaBossPriority.Reason = tostring(Config.EnmaBossPriority.Reason or "priority_enma_boss")
+Config.EnmaBossPriority.SkipWhenOwned = Config.EnmaBossPriority.SkipWhenOwned == true
 Config.ZenithBossPriority = type(Config.ZenithBossPriority) == "table" and Config.ZenithBossPriority or {}
 Config.ZenithBossPriority.Enabled = Config.ZenithBossPriority.Enabled ~= false
 Config.ZenithBossPriority.BossName = tostring(Config.ZenithBossPriority.BossName or "Zenith Boss")
@@ -124,6 +125,7 @@ Config.ZenithBossPriority.WorkspaceSearchDepth = math.max(1, math.floor(tonumber
 Config.ZenithBossPriority.StatusPrefix = tostring(Config.ZenithBossPriority.StatusPrefix or "Zenith")
 Config.ZenithBossPriority.StateName = tostring(Config.ZenithBossPriority.StateName or "farming_zenith_boss")
 Config.ZenithBossPriority.Reason = tostring(Config.ZenithBossPriority.Reason or "priority_zenith_boss")
+Config.ZenithBossPriority.SkipWhenOwned = Config.ZenithBossPriority.SkipWhenOwned == true
 Config.PriorityBosses = type(Config.PriorityBosses) == "table" and Config.PriorityBosses or {}
 Config.PriorityBosses[1] = Config.EnmaBossPriority
 Config.PriorityBosses[2] = Config.ZenithBossPriority
@@ -149,6 +151,16 @@ Config.BossFallbackFarmWithoutCancel = Config.BossFallbackFarmWithoutCancel ~= f
 Config.BossQuestKillThreshold = Config.BossQuestKillThreshold or 1
 Config.QuestCancelRetryDelay = Config.QuestCancelRetryDelay or 3
 Config.QuestCancelWait = Config.QuestCancelWait or 1.5
+Config.QuestInvokeTimeout = math.max(tonumber(Config.QuestInvokeTimeout) or 1.25, 0.35)
+Config.SyncLocationValue = Config.SyncLocationValue ~= false
+Config.NpcActivation = Config.NpcActivation ~= false
+Config.NpcActivationDistance = math.max(tonumber(Config.NpcActivationDistance) or 90, 30)
+Config.NpcActivationCooldown = math.max(tonumber(Config.NpcActivationCooldown) or 0.35, 0.1)
+Config.NpcActivationBurstLimit = math.max(1, math.floor(tonumber(Config.NpcActivationBurstLimit) or 16))
+Config.NpcActivationLast = type(Config.NpcActivationLast) == "table" and Config.NpcActivationLast or {}
+Config.UseLoaderBypassTeleport = Config.UseLoaderBypassTeleport ~= false
+Config.BypassTravelMinDistance = math.max(tonumber(Config.BypassTravelMinDistance) or 120, 0)
+Config.BypassTravelSettleDelay = math.max(tonumber(Config.BypassTravelSettleDelay) or 0.2, 0)
 Config.ClickPlay = Config.ClickPlay ~= false
 Config.SearchPlayDelay = Config.SearchPlayDelay or 0.5
 Config.SearchPlayTimeout = Config.SearchPlayTimeout or 60
@@ -210,7 +222,7 @@ Config.MobNameAliases["Favela Shanks' Mother"] = Config.MobNameAliases["Favela S
 	"Favela Shanks Mother",
 	"Shanks Mother",
 }
-local function ensureMobNameAlias(targetName, aliasName)
+function Config.EnsureMobNameAlias(targetName, aliasName)
 	local aliases = Config.MobNameAliases[targetName]
 
 	if type(aliases) ~= "table" then
@@ -235,7 +247,7 @@ for _, aliasData in next, {
 	{ "Favela Shanks' Mother", "Favela Shanks Mother" },
 	{ "Favela Shanks' Mother", "Shanks Mother" },
 } do
-	ensureMobNameAlias(aliasData[1], aliasData[2])
+	Config.EnsureMobNameAlias(aliasData[1], aliasData[2])
 end
 Config.PeanutPirateSkipUntilLevel = tonumber(Config.PeanutPirateSkipUntilLevel) or 3200
 Config.ForceFarmLevelEnabled = Config.ForceFarmLevelEnabled == true
@@ -638,6 +650,8 @@ local QuestGui = PlayerGui:WaitForChild("QuestGui")
 local QuestFunction = QuestGui:WaitForChild("QuestFunction")
 local QuestGivers = workspace:WaitForChild("Npc_Workspace"):WaitForChild("QuestGivers")
 local NpcZones = workspace:WaitForChild("NPC Zones")
+local ClientEvents = ReplicatedStorage:WaitForChild("Replication"):WaitForChild("ClientEvents")
+local ActivateNPC = ClientEvents:WaitForChild("ActivateNPC")
 
 local Connections = {}
 local QuestCache = {}
@@ -1351,6 +1365,142 @@ local function getInstanceCFrame(instance)
 	return nil
 end
 
+local getConfiguredQuestIslandName
+
+local function syncCharacterLocation(islandName)
+	if not Config.SyncLocationValue or not islandName or islandName == "" then
+		return false
+	end
+
+	local character = LocalPlayer.Character
+	local location = character and character:FindFirstChild("Location")
+
+	if not (location and location:IsA("StringValue")) then
+		setStatus("LocationSync", "missing")
+
+		return false
+	end
+
+	if location.Value ~= islandName then
+		location.Value = islandName
+	end
+
+	setStatus("LocationSync", islandName)
+
+	return true
+end
+
+local function activateNpcZone(islandName, force)
+	if not Config.NpcActivation or not islandName or islandName == "" then
+		return 0
+	end
+
+	local now = tick()
+
+	if not force and now - (Config.NpcActivationLast[islandName] or 0) < Config.NpcActivationCooldown then
+		return 0
+	end
+
+	Config.NpcActivationLast[islandName] = now
+	setStatus("NpcActivateZone", islandName)
+
+	local zone = NpcZones and NpcZones:FindFirstChild(islandName)
+	local npcs = zone and zone:FindFirstChild("NPCS")
+
+	if not zone or not npcs then
+		setStatus("NpcActivateResult", not zone and "no_zone" or "no_npcs")
+		setStatus("NpcActivateCount", 0)
+
+		return 0
+	end
+
+	local _, _, playerRoot = getCharacter()
+	local count = 0
+	local total = 0
+
+	for _, mob in next, npcs:GetChildren() do
+		if mob:IsA("Model") then
+			total += 1
+
+			local mobRoot = mob.PrimaryPart or getSafePart(mob)
+			local distance = mobRoot and playerRoot and (mobRoot.Position - playerRoot.Position).Magnitude or math.huge
+
+			if distance <= Config.NpcActivationDistance then
+				local ok, result = pcall(function()
+					ActivateNPC:FireServer(mob)
+				end)
+
+				if ok then
+					count += 1
+				else
+					setStatus("NpcActivateError", tostring(result))
+				end
+
+				if count >= Config.NpcActivationBurstLimit then
+					break
+				end
+			end
+		end
+	end
+
+	setStatus("NpcActivateTotal", total)
+	setStatus("NpcActivateCount", count)
+	setStatus("NpcActivateResult", count > 0 and "fired" or (total > 0 and "too_far" or "empty"))
+
+	return count
+end
+
+local function syncAndActivateQuestIsland(quest, targetName, force)
+	local islandName = getConfiguredQuestIslandName and getConfiguredQuestIslandName(quest, targetName) or nil
+
+	if islandName and islandName ~= "" then
+		syncCharacterLocation(islandName)
+		activateNpcZone(islandName, force)
+	end
+
+	return islandName
+end
+
+local function tryLoaderBypassTravel(destination, force)
+	if not Config.UseLoaderBypassTeleport or typeof(destination) ~= "CFrame" then
+		return false
+	end
+
+	local _, _, root = getCharacter()
+	local distance = root and (root.Position - destination.Position).Magnitude or math.huge
+
+	if not force and distance < Config.BypassTravelMinDistance then
+		return false
+	end
+
+	local array = rawget(_G, "HSKaitun")
+	local functions = type(array) == "table" and array.Function or nil
+	local bypass = type(functions) == "table" and (functions.VelocityBypassTeleportToCFrame or functions.BypassTeleportToCFrame) or nil
+
+	if type(bypass) ~= "function" then
+		setStatus("BypassTravel", "missing")
+
+		return false
+	end
+
+	setStatus("BypassTravel", "starting")
+	setStatus("BypassTravelDistance", distance)
+
+	local ok, result = pcall(bypass, destination)
+
+	if ok and result then
+		setStatus("BypassTravel", "done")
+		task.wait(Config.BypassTravelSettleDelay)
+
+		return true
+	end
+
+	setStatus("BypassTravel", "failed")
+	setStatus("BypassTravelError", tostring(result))
+
+	return false
+end
+
 local function clearHoverGyro()
 	if HoverGyro then
 		pcall(function()
@@ -1464,9 +1614,13 @@ local function lockHoverCFrame(targetRoot, force)
 	return true
 end
 
-local function travelToCFrame(destination)
+local function travelToCFrame(destination, forceBypass)
 	if not destination then
 		return false
+	end
+
+	if tryLoaderBypassTravel(destination, forceBypass) then
+		return true
 	end
 
 	if not Config.SmoothTravel then
@@ -1518,11 +1672,11 @@ local function travelToCFrame(destination)
 	return reached
 end
 
-local function moveNearInstance(instance)
+local function moveNearInstance(instance, forceBypass)
 	local cframe = getInstanceCFrame(instance)
 
 	if cframe then
-		return travelToCFrame(cframe + Vector3.new(0, Config.HoverHeight, 0))
+		return travelToCFrame(cframe + Vector3.new(0, Config.HoverHeight, 0), forceBypass)
 	end
 
 	return false
@@ -1819,7 +1973,7 @@ local function findQuestByObjective(objective)
 	return best
 end
 
-local function triggerQuestGiverPrompt(giver)
+function Config.TriggerQuestGiverPrompt(giver)
 	local prompt = giver and giver:FindFirstChildWhichIsA("ProximityPrompt", true)
 	local fired = false
 
@@ -1849,13 +2003,36 @@ local function acceptQuest(quest)
 		return false, "NoQuest"
 	end
 
-	moveNearInstance(quest.Giver)
-	triggerQuestGiverPrompt(quest.Giver)
+	syncAndActivateQuestIsland(quest, quest.MobName, true)
+	moveNearInstance(quest.Giver, true)
+	syncAndActivateQuestIsland(quest, quest.MobName, true)
+	Config.TriggerQuestGiverPrompt(quest.Giver)
 	task.wait(0.25)
 
-	local ok, result = pcall(function()
-		return QuestFunction:InvokeServer(quest.Giver, quest.LevelName)
+	local ok, result, done = false, "InvokeTimeout", false
+	local startedAt = tick()
+
+	setStatus("LastAcceptInvoke", "starting")
+	task.spawn(function()
+		local success, response = pcall(function()
+			return QuestFunction:InvokeServer(quest.Giver, quest.LevelName)
+		end)
+
+		ok, result, done = success, response, true
 	end)
+
+	while not done and isRunning() and tick() - startedAt < Config.QuestInvokeTimeout do
+		task.wait(0.05)
+	end
+
+	if not done then
+		setStatus("LastAcceptInvoke", "timeout")
+		Config.TriggerQuestGiverPrompt(quest.Giver)
+
+		return false, "InvokeTimeout"
+	end
+
+	setStatus("LastAcceptInvoke", "returned")
 
 	if not ok then
 		return false, result
@@ -1873,7 +2050,7 @@ local function acceptQuest(quest)
 		end
 	end
 
-	triggerQuestGiverPrompt(quest.Giver)
+	Config.TriggerQuestGiverPrompt(quest.Giver)
 	task.wait(0.2)
 
 	return result == true or hasActiveQuest(), result
@@ -2034,7 +2211,7 @@ local function normalizeMobName(name)
 		:gsub("%d+$", "")
 end
 
-local function normalizeMobNameLoose(name)
+function Config.NormalizeMobNameLoose(name)
 	local key = normalizeMobName(name)
 
 	if #key > 3 and key:sub(-1) == "s" and key:sub(-2) ~= "ss" then
@@ -2141,8 +2318,8 @@ local function mobNameMatchesTarget(mobName, target)
 	local lowerTarget = string.lower(target)
 	local normalizedName = normalizeMobName(name)
 	local normalizedTarget = normalizeMobName(target)
-	local looseName = normalizeMobNameLoose(name)
-	local looseTarget = normalizeMobNameLoose(target)
+	local looseName = Config.NormalizeMobNameLoose(name)
+	local looseTarget = Config.NormalizeMobNameLoose(target)
 
 	-- Exact match first (most accurate)
 	if lowerName == lowerTarget or lowerStrippedName == lowerTarget then
@@ -2339,7 +2516,7 @@ end
 
 local findQuestSpawnIsland
 
-local function getConfiguredQuestIslandName(quest, targetName)
+getConfiguredQuestIslandName = function(quest, targetName)
 	targetName = trimName(targetName or (quest and quest.MobName) or "")
 
 	if targetName ~= "" and Config.QuestIslandNames[targetName] then
@@ -2606,21 +2783,23 @@ end
 local function moveNearQuestSpawnPoint(quest, targetName)
 	local spawnPoint, islandFolder, targetPoint, scanPointCount = findQuestSpawnPoint(quest, targetName)
 	local configuredTravelCFrame = getConfiguredQuestTravelCFrame(quest, targetName)
+	local islandName = syncAndActivateQuestIsland(quest, targetName, true)
 
 	setStatus("LastSpawnMoveTarget", targetName)
 	if configuredTravelCFrame then
 		setStatus("LastSpawnMovePoint", "configured_position")
 		setStatus("LastSpawnMovePath", nil)
-		setStatus("LastSpawnMoveIsland", getConfiguredQuestIslandName(quest, targetName))
+		setStatus("LastSpawnMoveIsland", islandName)
 		setStatus("LastSpawnMoveMode", "configured_position")
 		setStatus("LastSpawnMoveAnchor", nil)
 		setStatus("LastSpawnMoveScanCount", 1)
 		setStatus("LastSpawnMoveIndex", 1)
 
-		setCharacterCFrame(configuredTravelCFrame)
+		local moved = travelToCFrame(configuredTravelCFrame, true)
+		syncAndActivateQuestIsland(quest, targetName, true)
 		refreshNpcContainers(true)
 
-		return true
+		return moved
 	end
 
 	setStatus("LastSpawnMovePoint", spawnPoint and spawnPoint.Name or nil)
@@ -2641,7 +2820,7 @@ local function moveNearQuestSpawnPoint(quest, targetName)
 		local cframe = getInstanceCFrame(spawnPoint)
 
 		if cframe then
-			setCharacterCFrame(cframe + Vector3.new(0, Config.HoverHeight, 0))
+			travelToCFrame(cframe + Vector3.new(0, Config.HoverHeight, 0))
 			moved = true
 		end
 	else
@@ -2649,6 +2828,7 @@ local function moveNearQuestSpawnPoint(quest, targetName)
 	end
 
 	if moved then
+		syncAndActivateQuestIsland(quest, targetName, true)
 		refreshNpcContainers(true)
 	end
 
@@ -2694,6 +2874,7 @@ local function probeQuestIslandForMob(quest, targetName, reason)
 
 	local scanCFrames, islandFolder, targetPoint, source, hasConfiguredTravelCFrame = collectQuestScanCFrames(quest, targetName)
 	local scanCount = #scanCFrames
+	syncAndActivateQuestIsland(quest, targetName, true)
 
 	setStatus("LastQuestIslandScanReason", reason)
 	setStatus("LastQuestIslandScanObjective", targetName)
@@ -2755,7 +2936,8 @@ local function probeQuestIslandForMob(quest, targetName, reason)
 				targetCFrame = scanCFrame + Vector3.new(0, Config.HoverHeight, 0)
 			end
 
-			setCharacterCFrame(targetCFrame)
+			travelToCFrame(targetCFrame)
+			syncAndActivateQuestIsland(quest, targetName, attempt == 1)
 			refreshNpcContainers(true)
 			task.wait(Config.MobSpawnProbeSettleDelay)
 		end
@@ -3339,8 +3521,8 @@ end
 function Config.DragonIsland.MatchesConfiguredName(value, targetName)
 	local valueKey = normalizeMobName(value)
 	local targetKey = normalizeMobName(targetName)
-	local looseValueKey = normalizeMobNameLoose(value)
-	local looseTargetKey = normalizeMobNameLoose(targetName)
+	local looseValueKey = Config.NormalizeMobNameLoose(value)
+	local looseTargetKey = Config.NormalizeMobNameLoose(targetName)
 
 	if valueKey ~= "" and valueKey == targetKey then
 		return true
@@ -3358,7 +3540,7 @@ function Config.DragonIsland.MatchesConfiguredName(value, targetName)
 				return true
 			end
 
-			if looseValueKey ~= "" and looseValueKey == normalizeMobNameLoose(alias) then
+			if looseValueKey ~= "" and looseValueKey == Config.NormalizeMobNameLoose(alias) then
 				return true
 			end
 		end
@@ -3653,6 +3835,8 @@ function Config.DragonIsland.ChooseFarmCandidate(candidates, level)
 end
 
 function Config.DragonIsland.FindFarmTarget(targetName, level)
+	syncCharacterLocation(Config.DragonIslandLock.IslandName)
+	activateNpcZone(Config.DragonIslandLock.IslandName, false)
 	refreshNpcContainers(false)
 
 	local _, _, playerRoot = getCharacter()
@@ -3852,14 +4036,14 @@ function Config.DragonIsland.IsKnownSuperBoss(model)
 
 	for _, mobName in next, mobNames do
 		local mobKey = normalizeMobName(mobName)
-		local looseMobKey = normalizeMobNameLoose(mobName)
+		local looseMobKey = Config.NormalizeMobNameLoose(mobName)
 
 		for _, bossName in next, Config.DragonIslandLock.SuperBossNames do
 			if mobKey ~= "" and mobKey == normalizeMobName(bossName) then
 				return true
 			end
 
-			if looseMobKey ~= "" and looseMobKey == normalizeMobNameLoose(bossName) then
+			if looseMobKey ~= "" and looseMobKey == Config.NormalizeMobNameLoose(bossName) then
 				return true
 			end
 		end
@@ -3993,6 +4177,8 @@ function Config.DragonIsland.FindSuperBoss()
 
 	Config.DragonIsland.LastSuperBossCheck = tick()
 	Config.DragonIsland.SuperBossTarget = nil
+	activateNpcZone("SpecialBosses", false)
+	activateNpcZone("Spawned", false)
 
 	local _, _, playerRoot = getCharacter()
 	local closestDistance = math.huge
@@ -4196,6 +4382,8 @@ function PriorityBoss.FindTarget(priorityConfig)
 	end
 
 	LastPriorityBossCheck[bossKey] = tick()
+	activateNpcZone("SpecialBosses", false)
+	activateNpcZone("Spawned", false)
 	refreshNpcContainers(true)
 
 	local bossName = tostring(priorityConfig.BossName or "")
@@ -4247,13 +4435,17 @@ function PriorityBoss.HandleOne(priorityConfig)
 	local priorityKey = PriorityBoss.GetStatusKey(priorityConfig, "BossPriority")
 	local bossName = tostring(priorityConfig.BossName or "")
 
-	if PriorityBoss.HasSword(priorityConfig) then
+	local hasSword = PriorityBoss.HasSword(priorityConfig)
+
+	if hasSword and priorityConfig.SkipWhenOwned then
 		PriorityBoss.Targets = PriorityBoss.Targets or {}
 		PriorityBoss.Targets[bossKey] = nil
 		PriorityBoss.Target = nil
 		setStatus(priorityKey, PriorityBoss.GetOwnedState(priorityConfig))
 
 		return false, true
+	elseif hasSword then
+		setStatus(PriorityBoss.GetStatusKey(priorityConfig, "OwnedBossFarm"), "enabled")
 	end
 
 	local target = PriorityBoss.FindTarget(priorityConfig)
@@ -4322,6 +4514,7 @@ function PriorityBoss.Handle()
 	return false
 end
 
+local runSea3UnlockFlow = (function()
 local function getSea3Gatekeeper()
 	local npcWorkspace = workspace:FindFirstChild("Npc_Workspace")
 	local sea3Unlocker = npcWorkspace and npcWorkspace:FindFirstChild("Sea3Unlocker")
@@ -4860,7 +5053,7 @@ function Config.Sea3Gate.RequestTeleport()
 	return true
 end
 
-local function runSea3UnlockFlow(level)
+local function runSea3UnlockFlowImpl(level)
 	if not shouldRunSea3Unlock(level) then
 		return false
 	end
@@ -4925,6 +5118,10 @@ local function runSea3UnlockFlow(level)
 
 	return true
 end
+
+assert(type(fightRedEmperorTarget) == "function", "red emperor fight helper missing")
+return runSea3UnlockFlowImpl
+end)()
 
 function Config.AntiAfkPulse(reason)
 	if not Config.AntiAfk then
@@ -5017,7 +5214,6 @@ assert(type(selectQuestForLevel) == "function", "quest selector missing")
 assert(type(selectFarmQuest) == "function", "farm quest selector missing")
 assert(type(findMob) == "function", "mob finder missing")
 assert(type(cancelActiveQuest) == "function", "quest cancel helper missing")
-assert(type(fightRedEmperorTarget) == "function", "red emperor fight helper missing")
 assert(type(runSea3UnlockFlow) == "function", "sea3 unlock helper missing")
 assert(type(Config.Sea3Gate.QueueRunner) == "function", "sea3 queue helper missing")
 assert(type(Config.Sea3Gate.RequestTeleport) == "function", "sea3 teleport request helper missing")
@@ -5046,7 +5242,7 @@ assert(Config.DragonIslandLock.StartLevel == 3050 and Config.DragonIslandLock.En
 assert(Config.DragonIslandLock.AwakenBossName == "Dragon Boss" and Config.DragonIslandLock.AwakenSoulTarget == 999, "dragon awaken boss config missing")
 assert(Config.DragonIslandLock.QuestNames[1] == "Elite Beast" and Config.DragonIslandLock.QuestNames[2] == "Beast Pirate", "dragon island quest targets missing")
 assert(Config.DragonIslandLock.SuperBossPriority == true and #Config.DragonIslandLock.SuperBossNames >= 10, "dragon island super boss priority config missing")
-assert(normalizeMobNameLoose("Elite Beasts") == normalizeMobNameLoose("Elite Beast"), "plural mob match missing")
+assert(Config.NormalizeMobNameLoose("Elite Beasts") == Config.NormalizeMobNameLoose("Elite Beast"), "plural mob match missing")
 assert(Config.DragonIsland.MatchesConfiguredName("Beast Pirates", "Beast Pirate"), "dragon island plural quest alias missing")
 assert(Config.SwordTopDownHover == true and Config.SwordHoverPitch == -90, "world 2 sword top-down hover missing")
 assert(Config.SwordHoverGyroMaxTorque >= 10000, "world 2 sword hover gyro config missing")
