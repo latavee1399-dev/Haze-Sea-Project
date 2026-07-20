@@ -64,6 +64,12 @@ end
 Config.Enabled = true
 Config.RunId = RunId
 Config.QueueSea3Source = type(Config.QueueSea3Source) == "string" and Config.QueueSea3Source or ""
+Config.QueueSea3Urls = type(Config.QueueSea3Urls) == "table" and Config.QueueSea3Urls or {
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/HS%20Kaitun.lua",
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/HS%20Kaitun.lua",
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/Haze%20Seas/HS%20Kaitun.lua",
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/Haze%20Seas/HS%20Kaitun.lua",
+}
 Config.HoverHeight = Config.HoverHeight or 8
 Config.SwordTopDownHover = Config.SwordTopDownHover ~= false
 Config.SwordHoverHeight = math.max(tonumber(Config.SwordHoverHeight) or 5.5, 2)
@@ -73,6 +79,8 @@ Config.SwordHoverGyroPower = math.max(tonumber(Config.SwordHoverGyroPower) or 10
 Config.AttackDelay = math.min(Config.AttackDelay or 0.06, 0.06)
 Config.AttackBurst = math.max(2, math.floor(Config.AttackBurst or 2))
 Config.AttackBurstDelay = math.min(Config.AttackBurstDelay or 0.02, 0.02)
+Config.AttackRetryDelay = math.max(tonumber(Config.AttackRetryDelay) or 0.05, 0.01)
+Config.FireActivatedSignal = Config.FireActivatedSignal ~= false
 Config.LoopDelay = math.min(Config.LoopDelay or 0.08, 0.08)
 Config.TargetRefreshDelay = Config.TargetRefreshDelay or 0.75
 Config.QuestRetryDelay = Config.QuestRetryDelay or 2
@@ -3466,6 +3474,16 @@ local function updateToolMouse(tool, targetRoot)
 	end
 end
 
+local function fireToolActivated(tool)
+	if not Config.FireActivatedSignal or typeof(firesignal) ~= "function" or not tool then
+		return false
+	end
+
+	return pcall(function()
+		firesignal(tool.Activated)
+	end)
+end
+
 local function attackTarget(target)
 	if tick() - LastAttack < Config.AttackDelay then
 		return false
@@ -3474,6 +3492,13 @@ local function attackTarget(target)
 	local targetRoot = getRootPart(target)
 
 	if not targetRoot then
+		task.wait(Config.AttackRetryDelay)
+		targetRoot = getRootPart(target)
+	end
+
+	if not targetRoot then
+		setStatus("LastAttackResult", "missing_root")
+
 		return false
 	end
 
@@ -3483,22 +3508,44 @@ local function attackTarget(target)
 	local tool = getPreferredTool()
 
 	if not tool then
+		task.wait(Config.AttackRetryDelay)
+		tool = getPreferredTool()
+	end
+
+	if not tool then
+		setStatus("LastAttackResult", "missing_tool")
+
 		return false
 	end
 
 	LastAttack = tick()
+	setStatus("LastAttackTarget", target.Name)
+	setStatus("LastAttackTool", tool.Name)
 
 	for attackIndex = 1, Config.AttackBurst do
+		if not isAliveMob(target) then
+			break
+		end
+
+		targetRoot = getRootPart(target) or targetRoot
+
+		if not targetRoot then
+			break
+		end
+
 		lockHoverCFrame(targetRoot, true)
 		updateToolMouse(tool, targetRoot)
 		pcall(function()
 			tool:Activate()
 		end)
+		fireToolActivated(tool)
 
 		if attackIndex < Config.AttackBurst then
 			task.wait(Config.AttackBurstDelay)
 		end
 	end
+
+	setStatus("LastAttackResult", "activated")
 
 	return true
 end
@@ -4962,6 +5009,83 @@ local function shouldRunSea3Unlock(level)
 	return Config.Sea3Gate.IsReady(level)
 end
 
+function Config.Sea3Gate.IsValidQueueSource(source)
+	if type(source) ~= "string" or source == "" then
+		return false
+	end
+
+	local sourceHead = string.sub(source, 1, 200)
+
+	if string.find(sourceHead, "404: Not Found", 1, true)
+		or string.find(string.lower(sourceHead), "<html", 1, true)
+	then
+		return false
+	end
+
+	return string.find(source, "HSKaitun", 1, true) ~= nil
+end
+
+function Config.Sea3Gate.FetchQueueSource(url)
+	local success, source = pcall(function()
+		return game:HttpGet(url)
+	end)
+
+	if not Config.Sea3Gate.IsValidQueueSource(source) then
+		success = false
+		source = nil
+
+		if type(request) == "function" then
+			success, source = pcall(function()
+				local response = request({
+					Url = url,
+					Method = "GET",
+				})
+
+				return response and response.Body or nil
+			end)
+		elseif type(syn) == "table" and type(syn.request) == "function" then
+			success, source = pcall(function()
+				local response = syn.request({
+					Url = url,
+					Method = "GET",
+				})
+
+				return response and response.Body or nil
+			end)
+		end
+	end
+
+	if success and Config.Sea3Gate.IsValidQueueSource(source) then
+		return source
+	end
+
+	return nil
+end
+
+function Config.Sea3Gate.GetQueueSource()
+	if Config.Sea3Gate.IsValidQueueSource(Config.QueueSea3Source) then
+		setStatus("Sea3QueueSource", "config")
+
+		return Config.QueueSea3Source
+	end
+
+	for _, url in next, Config.QueueSea3Urls do
+		local source = Config.Sea3Gate.FetchQueueSource(url)
+
+		if source then
+			Config.QueueSea3Source = source
+			setStatus("Sea3QueueSource", "url")
+			setStatus("Sea3QueueSourceUrl", url)
+
+			return source
+		end
+	end
+
+	setStatus("Sea3QueueSource", "missing")
+
+	return nil
+end
+
 function Config.Sea3Gate.QueueRunner()
 	local queueOnTeleport = nil
 
@@ -4975,14 +5099,16 @@ function Config.Sea3Gate.QueueRunner()
 		queueOnTeleport = fluxus.queue_on_teleport
 	end
 
-	if not queueOnTeleport or type(Config.QueueSea3Source) ~= "string" or Config.QueueSea3Source == "" then
+	local queueSource = Config.Sea3Gate.GetQueueSource()
+
+	if not queueOnTeleport or type(queueSource) ~= "string" or queueSource == "" then
 		setStatus("Sea3Queue", "missing")
 
 		return false
 	end
 
 	local success = pcall(function()
-		queueOnTeleport(Config.QueueSea3Source)
+		queueOnTeleport(queueSource)
 	end)
 
 	setStatus("Sea3Queue", success and "queued" or "failed")
@@ -5220,6 +5346,7 @@ assert(type(findMob) == "function", "mob finder missing")
 assert(type(cancelActiveQuest) == "function", "quest cancel helper missing")
 assert(type(runSea3UnlockFlow) == "function", "sea3 unlock helper missing")
 assert(type(Config.Sea3Gate.QueueRunner) == "function", "sea3 queue helper missing")
+assert(type(Config.Sea3Gate.GetQueueSource) == "function", "sea3 queue source helper missing")
 assert(type(Config.Sea3Gate.RequestTeleport) == "function", "sea3 teleport request helper missing")
 assert(type(refundStatsBeforeUpgrade) == "function", "stat refund helper missing")
 assert(type(RefundStats.GetPoints) == "function", "refund point helper missing")
