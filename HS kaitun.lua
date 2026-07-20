@@ -1,11 +1,20 @@
 repeat task.wait() until game:IsLoaded()
 
 local LoadDelay = math.max(tonumber(_G.HSKaitunLoadDelaySeconds) or 10, 0)
+local LoadReadyAt = tonumber(_G.HSKaitunGameLoadReadyAt)
 
-if not _G.HSKaitunGameLoadDelayDone then
-	_G.HSKaitunGameLoadDelayDone = true
-	task.wait(LoadDelay)
+if not LoadReadyAt then
+	LoadReadyAt = os.clock() + LoadDelay
+	_G.HSKaitunGameLoadReadyAt = LoadReadyAt
 end
+
+local LoadDelayRemaining = LoadReadyAt - os.clock()
+
+if LoadDelayRemaining > 0 then
+	task.wait(LoadDelayRemaining)
+end
+
+_G.HSKaitunGameLoadDelayDone = true
 
 local Array = {
 	Config = {
@@ -103,11 +112,8 @@ local Array = {
 				"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/Haze%20Sea2.lua",
 				"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/Haze%20Sea2.lua",
 			},
-			ScriptPaths = {
-				"Haze Seas/Haze Sea2.lua",
-				"Haze Seas\\Haze Sea2.lua",
-			},
-			DirectLoadstring = true,
+			DirectLoadstring = false,
+			StandaloneWait = 4,
 			PreferTool = "Shusui",
 			RequirePreferTool = true,
 			AutoRefundStats = true,
@@ -127,6 +133,9 @@ local Array = {
 		},
 		World3Shrine = {
 			Enabled = true,
+			RockModelName = "3SSRock",
+			UnlockRemoteName = "Unlock",
+			UseDirectUnlock = true,
 			PromptObjectText = "Shrine of Three Swords",
 			PromptActionText = "Interact",
 			RequiredMastery = 300,
@@ -146,6 +155,7 @@ local Array = {
 				"Three Sword",
 				"3 Swords",
 				"3 Sword",
+				"3 Sword Style",
 				"Three Sword Style",
 				"Santoryu",
 			},
@@ -342,22 +352,20 @@ _G.HSKaitunReloaded = false
 repeat task.wait() until game:IsLoaded()
 
 _G.HSKaitunLoadDelaySeconds = math.max(tonumber(_G.HSKaitunLoadDelaySeconds) or 10, 0)
+_G.HSKaitunGameLoadReadyAt = tonumber(_G.HSKaitunGameLoadReadyAt) or (os.clock() + _G.HSKaitunLoadDelaySeconds)
+_G.HSKaitunLoadDelayRemaining = _G.HSKaitunGameLoadReadyAt - os.clock()
 
-if not _G.HSKaitunGameLoadDelayDone then
-	_G.HSKaitunGameLoadDelayDone = true
-	task.wait(_G.HSKaitunLoadDelaySeconds)
+if _G.HSKaitunLoadDelayRemaining > 0 then
+	task.wait(_G.HSKaitunLoadDelayRemaining)
 end
+
+_G.HSKaitunGameLoadDelayDone = true
 
 pcall(function()
 	if type(loadstring) ~= "function" then
 		return
 	end
 
-	_G.HSKaitunQueuePaths = {
-		"Haze Seas/HS Kaitun.lua",
-		"Haze Seas\\HS Kaitun.lua",
-		"HS Kaitun.lua",
-	}
 	_G.HSKaitunQueueUrls = type(_G.HSKaitunQueueUrls) == "table" and _G.HSKaitunQueueUrls or {
 		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/HS%20Kaitun.lua",
 		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/HS%20Kaitun.lua",
@@ -412,31 +420,6 @@ pcall(function()
 		return nil
 	end
 
-	if type(readfile) == "function" then
-		for _, Path in next, _G.HSKaitunQueuePaths do
-			if _G.HSKaitunReloaded then
-				break
-			end
-
-			_G.HSKaitunQueueSuccess, _G.HSKaitunQueueSource = pcall(function()
-				return readfile(Path)
-			end)
-
-			if _G.HSKaitunQueueSuccess
-				and type(_G.HSKaitunQueueSource) == "string"
-				and #_G.HSKaitunQueueSource > 0
-				and string.find(_G.HSKaitunQueueSource, "HSKaitun", 1, true)
-			then
-				_G.HSKaitunQueueChunk = loadstring(_G.HSKaitunQueueSource)
-
-				if type(_G.HSKaitunQueueChunk) == "function" then
-					_G.HSKaitunReloaded = true
-					_G.HSKaitunQueueChunk()
-				end
-			end
-		end
-	end
-
 	for _, Url in next, _G.HSKaitunQueueUrls do
 		if _G.HSKaitunReloaded then
 			break
@@ -482,11 +465,20 @@ end)
 repeat task.wait() until game:IsLoaded()
 
 local LoadDelay = math.max(tonumber(_G.HSKaitunLoadDelaySeconds) or 10, 0)
+local LoadReadyAt = tonumber(_G.HSKaitunGameLoadReadyAt)
 
-if not _G.HSKaitunGameLoadDelayDone then
-	_G.HSKaitunGameLoadDelayDone = true
-	task.wait(LoadDelay)
+if not LoadReadyAt then
+	LoadReadyAt = os.clock() + LoadDelay
+	_G.HSKaitunGameLoadReadyAt = LoadReadyAt
 end
+
+local LoadDelayRemaining = LoadReadyAt - os.clock()
+
+if LoadDelayRemaining > 0 then
+	task.wait(LoadDelayRemaining)
+end
+
+_G.HSKaitunGameLoadDelayDone = true
 
 if game.PlaceId ~= 14979402479 then
 	return
@@ -531,6 +523,12 @@ end
 Config.Enabled = true
 Config.RunId = RunId
 Config.QueueSea3Source = type(Config.QueueSea3Source) == "string" and Config.QueueSea3Source or ""
+Config.QueueSea3Urls = type(Config.QueueSea3Urls) == "table" and Config.QueueSea3Urls or {
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/HS%20Kaitun.lua",
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/HS%20Kaitun.lua",
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/Haze%20Seas/HS%20Kaitun.lua",
+	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/main/Haze%20Seas/HS%20Kaitun.lua",
+}
 Config.HoverHeight = Config.HoverHeight or 8
 Config.SwordTopDownHover = Config.SwordTopDownHover ~= false
 Config.SwordHoverHeight = math.max(tonumber(Config.SwordHoverHeight) or 5.5, 2)
@@ -540,9 +538,12 @@ Config.SwordHoverGyroPower = math.max(tonumber(Config.SwordHoverGyroPower) or 10
 Config.AttackDelay = math.min(Config.AttackDelay or 0.06, 0.06)
 Config.AttackBurst = math.max(2, math.floor(Config.AttackBurst or 2))
 Config.AttackBurstDelay = math.min(Config.AttackBurstDelay or 0.02, 0.02)
+Config.AttackRetryDelay = math.max(tonumber(Config.AttackRetryDelay) or 0.05, 0.01)
+Config.FireActivatedSignal = Config.FireActivatedSignal ~= false
 Config.LoopDelay = math.min(Config.LoopDelay or 0.08, 0.08)
 Config.TargetRefreshDelay = Config.TargetRefreshDelay or 0.75
 Config.QuestRetryDelay = Config.QuestRetryDelay or 2
+Config.QuestTimeoutFarmDelay = math.max(tonumber(Config.QuestTimeoutFarmDelay) or 10, Config.QuestRetryDelay)
 Config.ContainerRefreshDelay = Config.ContainerRefreshDelay or 10
 Config.MobSearchDepth = Config.MobSearchDepth or 4
 Config.MobSpawnProbeMinLevel = Config.MobSpawnProbeMinLevel or 3450
@@ -562,6 +563,7 @@ Config.FastTravel = Config.FastTravel ~= false
 Config.TravelSpeed = math.max(Config.TravelSpeed or 650, 650)
 Config.TravelStepDelay = math.min(Config.TravelStepDelay or 0.015, 0.015)
 Config.TravelMaxStep = math.max(Config.TravelMaxStep or 22, 22)
+Config.TravelArriveDistance = math.max(tonumber(Config.TravelArriveDistance) or 12, 3)
 Config.SafePositionFloor = Config.SafePositionFloor or -10000
 Config.PreferTool = "Shusui"
 Config.RequirePreferTool = Config.RequirePreferTool ~= false
@@ -582,6 +584,7 @@ Config.EnmaBossPriority.WorkspaceSearchDepth = math.max(1, math.floor(tonumber(C
 Config.EnmaBossPriority.StatusPrefix = tostring(Config.EnmaBossPriority.StatusPrefix or "Enma")
 Config.EnmaBossPriority.StateName = tostring(Config.EnmaBossPriority.StateName or "farming_enma_boss")
 Config.EnmaBossPriority.Reason = tostring(Config.EnmaBossPriority.Reason or "priority_enma_boss")
+Config.EnmaBossPriority.SkipWhenOwned = Config.EnmaBossPriority.SkipWhenOwned == true
 Config.ZenithBossPriority = type(Config.ZenithBossPriority) == "table" and Config.ZenithBossPriority or {}
 Config.ZenithBossPriority.Enabled = Config.ZenithBossPriority.Enabled ~= false
 Config.ZenithBossPriority.BossName = tostring(Config.ZenithBossPriority.BossName or "Zenith Boss")
@@ -591,6 +594,7 @@ Config.ZenithBossPriority.WorkspaceSearchDepth = math.max(1, math.floor(tonumber
 Config.ZenithBossPriority.StatusPrefix = tostring(Config.ZenithBossPriority.StatusPrefix or "Zenith")
 Config.ZenithBossPriority.StateName = tostring(Config.ZenithBossPriority.StateName or "farming_zenith_boss")
 Config.ZenithBossPriority.Reason = tostring(Config.ZenithBossPriority.Reason or "priority_zenith_boss")
+Config.ZenithBossPriority.SkipWhenOwned = Config.ZenithBossPriority.SkipWhenOwned == true
 Config.PriorityBosses = type(Config.PriorityBosses) == "table" and Config.PriorityBosses or {}
 Config.PriorityBosses[1] = Config.EnmaBossPriority
 Config.PriorityBosses[2] = Config.ZenithBossPriority
@@ -616,6 +620,16 @@ Config.BossFallbackFarmWithoutCancel = Config.BossFallbackFarmWithoutCancel ~= f
 Config.BossQuestKillThreshold = Config.BossQuestKillThreshold or 1
 Config.QuestCancelRetryDelay = Config.QuestCancelRetryDelay or 3
 Config.QuestCancelWait = Config.QuestCancelWait or 1.5
+Config.QuestInvokeTimeout = math.max(tonumber(Config.QuestInvokeTimeout) or 1.25, 0.35)
+Config.SyncLocationValue = Config.SyncLocationValue ~= false
+Config.NpcActivation = Config.NpcActivation ~= false
+Config.NpcActivationDistance = math.max(tonumber(Config.NpcActivationDistance) or 90, 30)
+Config.NpcActivationCooldown = math.max(tonumber(Config.NpcActivationCooldown) or 0.35, 0.1)
+Config.NpcActivationBurstLimit = math.max(1, math.floor(tonumber(Config.NpcActivationBurstLimit) or 16))
+Config.NpcActivationLast = type(Config.NpcActivationLast) == "table" and Config.NpcActivationLast or {}
+Config.UseLoaderBypassTeleport = Config.UseLoaderBypassTeleport ~= false
+Config.BypassTravelMinDistance = math.max(tonumber(Config.BypassTravelMinDistance) or 850, 500)
+Config.BypassTravelSettleDelay = math.max(tonumber(Config.BypassTravelSettleDelay) or 0.2, 0)
 Config.ClickPlay = Config.ClickPlay ~= false
 Config.SearchPlayDelay = Config.SearchPlayDelay or 0.5
 Config.SearchPlayTimeout = Config.SearchPlayTimeout or 60
@@ -653,10 +667,12 @@ Config.MobNameAliases = Config.MobNameAliases or {}
 Config.MobNameAliases["Enma Boss"] = Config.MobNameAliases["Enma Boss"] or {
 	"Enma Boss",
 	"EnmaBoss",
+	"Enma",
 }
 Config.MobNameAliases["Zenith Boss"] = Config.MobNameAliases["Zenith Boss"] or {
 	"Zenith Boss",
 	"ZenithBoss",
+	"Zenith",
 }
 Config.MobNameAliases["Elite Beast"] = Config.MobNameAliases["Elite Beast"] or {
 	"Elite Beast",
@@ -670,6 +686,38 @@ Config.MobNameAliases["Dragon Boss"] = Config.MobNameAliases["Dragon Boss"] or {
 	"Dragon Boss",
 	"DragonBoss",
 }
+Config.MobNameAliases["Favela Shanks' Mother"] = Config.MobNameAliases["Favela Shanks' Mother"] or {
+	"Favela Shanks' Mother",
+	"Favela Shanks Mother",
+	"Shanks Mother",
+}
+function Config.EnsureMobNameAlias(targetName, aliasName)
+	local aliases = Config.MobNameAliases[targetName]
+
+	if type(aliases) ~= "table" then
+		aliases = { targetName }
+		Config.MobNameAliases[targetName] = aliases
+	end
+
+	for _, currentName in next, aliases do
+		if currentName == aliasName then
+			return
+		end
+	end
+
+	table.insert(aliases, aliasName)
+end
+
+for _, aliasData in next, {
+	{ "Enma Boss", "Enma" },
+	{ "Zenith Boss", "Zenith" },
+	{ "Elite Beast", "Elite Beasts" },
+	{ "Beast Pirate", "Beast Pirates" },
+	{ "Favela Shanks' Mother", "Favela Shanks Mother" },
+	{ "Favela Shanks' Mother", "Shanks Mother" },
+} do
+	Config.EnsureMobNameAlias(aliasData[1], aliasData[2])
+end
 Config.PeanutPirateSkipUntilLevel = tonumber(Config.PeanutPirateSkipUntilLevel) or 3200
 Config.ForceFarmLevelEnabled = Config.ForceFarmLevelEnabled == true
 Config.ForceFarmLevel = tonumber(Config.ForceFarmLevel) or 2850
@@ -709,16 +757,20 @@ Config.DragonIslandLock.SuperBossNames[1] = "Enma Boss"
 Config.DragonIslandLock.SuperBossNames[2] = "Zenith Boss"
 Config.DragonIslandLock.SuperBossNames[3] = "Sea Beast"
 Config.DragonIslandLock.SuperBossNames[4] = "Seabeast"
-Config.DragonIslandLock.SuperBossNames[5] = "Ghost Ship"
-Config.DragonIslandLock.SuperBossNames[6] = "Cthulhu"
-Config.DragonIslandLock.SuperBossNames[7] = "Kraken"
-Config.DragonIslandLock.SuperBossNames[8] = "Leviathan"
-Config.DragonIslandLock.SuperBossNames[9] = "Sea King"
-Config.DragonIslandLock.SuperBossNames[10] = "Sea Monster"
+Config.DragonIslandLock.SuperBossNames[5] = "Angry Sea Beast"
+Config.DragonIslandLock.SuperBossNames[6] = "Red Sea Beast"
+Config.DragonIslandLock.SuperBossNames[7] = "Ghost Ship"
+Config.DragonIslandLock.SuperBossNames[8] = "Cthulhu"
+Config.DragonIslandLock.SuperBossNames[9] = "Kraken"
+Config.DragonIslandLock.SuperBossNames[10] = "Leviathan"
+Config.DragonIslandLock.SuperBossNames[11] = "Sea King"
+Config.DragonIslandLock.SuperBossNames[12] = "Sea Monster"
+Config.DragonIslandLock.SuperBossNames[13] = "Dough Boss"
+Config.DragonIslandLock.SuperBossNames[14] = "Favela Shanks' Mother"
 Config.Sea3Unlock = Config.Sea3Unlock ~= false
 Config.Sea3RequiredLevel = 4500
-Config.Sea3RequiredGems = 1000
-Config.Sea3RequiredSwordMastery = 310
+Config.Sea3RequiredGems = 2000
+Config.Sea3RequiredSwordMastery = 300
 Config.Sea3RequiredSwords = type(Config.Sea3RequiredSwords) == "table" and Config.Sea3RequiredSwords or {}
 Config.Sea3RequiredSwords[1] = "Shusui"
 Config.Sea3RequiredSwords[2] = "Enma"
@@ -1067,6 +1119,8 @@ local QuestGui = PlayerGui:WaitForChild("QuestGui")
 local QuestFunction = QuestGui:WaitForChild("QuestFunction")
 local QuestGivers = workspace:WaitForChild("Npc_Workspace"):WaitForChild("QuestGivers")
 local NpcZones = workspace:WaitForChild("NPC Zones")
+local ClientEvents = ReplicatedStorage:WaitForChild("Replication"):WaitForChild("ClientEvents")
+local ActivateNPC = ClientEvents:WaitForChild("ActivateNPC")
 
 local Connections = {}
 local QuestCache = {}
@@ -1075,6 +1129,8 @@ local LastQuestCacheBuild = 0
 local LastContainerScan = 0
 local LastAttack = 0
 local LastQuestAttempt = 0
+local TimeoutFarmQuest = nil
+local TimeoutFarmUntil = 0
 local LastTargetSearch = 0
 local LastHoverLock = 0
 local LastHoverPosition = nil
@@ -1780,6 +1836,142 @@ local function getInstanceCFrame(instance)
 	return nil
 end
 
+local getConfiguredQuestIslandName
+
+local function syncCharacterLocation(islandName)
+	if not Config.SyncLocationValue or not islandName or islandName == "" then
+		return false
+	end
+
+	local character = LocalPlayer.Character
+	local location = character and character:FindFirstChild("Location")
+
+	if not (location and location:IsA("StringValue")) then
+		setStatus("LocationSync", "missing")
+
+		return false
+	end
+
+	if location.Value ~= islandName then
+		location.Value = islandName
+	end
+
+	setStatus("LocationSync", islandName)
+
+	return true
+end
+
+local function activateNpcZone(islandName, force)
+	if not Config.NpcActivation or not islandName or islandName == "" then
+		return 0
+	end
+
+	local now = tick()
+
+	if not force and now - (Config.NpcActivationLast[islandName] or 0) < Config.NpcActivationCooldown then
+		return 0
+	end
+
+	Config.NpcActivationLast[islandName] = now
+	setStatus("NpcActivateZone", islandName)
+
+	local zone = NpcZones and NpcZones:FindFirstChild(islandName)
+	local npcs = zone and zone:FindFirstChild("NPCS")
+
+	if not zone or not npcs then
+		setStatus("NpcActivateResult", not zone and "no_zone" or "no_npcs")
+		setStatus("NpcActivateCount", 0)
+
+		return 0
+	end
+
+	local _, _, playerRoot = getCharacter()
+	local count = 0
+	local total = 0
+
+	for _, mob in next, npcs:GetChildren() do
+		if mob:IsA("Model") then
+			total += 1
+
+			local mobRoot = mob.PrimaryPart or getSafePart(mob)
+			local distance = mobRoot and playerRoot and (mobRoot.Position - playerRoot.Position).Magnitude or math.huge
+
+			if distance <= Config.NpcActivationDistance then
+				local ok, result = pcall(function()
+					ActivateNPC:FireServer(mob)
+				end)
+
+				if ok then
+					count += 1
+				else
+					setStatus("NpcActivateError", tostring(result))
+				end
+
+				if count >= Config.NpcActivationBurstLimit then
+					break
+				end
+			end
+		end
+	end
+
+	setStatus("NpcActivateTotal", total)
+	setStatus("NpcActivateCount", count)
+	setStatus("NpcActivateResult", count > 0 and "fired" or (total > 0 and "too_far" or "empty"))
+
+	return count
+end
+
+local function syncAndActivateQuestIsland(quest, targetName, force)
+	local islandName = getConfiguredQuestIslandName and getConfiguredQuestIslandName(quest, targetName) or nil
+
+	if islandName and islandName ~= "" then
+		syncCharacterLocation(islandName)
+		activateNpcZone(islandName, force)
+	end
+
+	return islandName
+end
+
+local function tryLoaderBypassTravel(destination, force)
+	if not Config.UseLoaderBypassTeleport or typeof(destination) ~= "CFrame" then
+		return false
+	end
+
+	local _, _, root = getCharacter()
+	local distance = root and (root.Position - destination.Position).Magnitude or math.huge
+
+	if not force and distance < Config.BypassTravelMinDistance then
+		return false
+	end
+
+	local array = rawget(_G, "HSKaitun")
+	local functions = type(array) == "table" and array.Function or nil
+	local bypass = type(functions) == "table" and (functions.VelocityBypassTeleportToCFrame or functions.BypassTeleportToCFrame) or nil
+
+	if type(bypass) ~= "function" then
+		setStatus("BypassTravel", "missing")
+
+		return false
+	end
+
+	setStatus("BypassTravel", "starting")
+	setStatus("BypassTravelDistance", distance)
+
+	local ok, result = pcall(bypass, destination)
+
+	if ok and result then
+		setStatus("BypassTravel", "done")
+		task.wait(Config.BypassTravelSettleDelay)
+
+		return true
+	end
+
+	setStatus("BypassTravel", "failed")
+	setStatus("BypassTravelError", tostring(result))
+
+	return false
+end
+
 local function clearHoverGyro()
 	if HoverGyro then
 		pcall(function()
@@ -1893,9 +2085,13 @@ local function lockHoverCFrame(targetRoot, force)
 	return true
 end
 
-local function travelToCFrame(destination)
+local function travelToCFrame(destination, forceBypass)
 	if not destination then
 		return false
+	end
+
+	if tryLoaderBypassTravel(destination, forceBypass) then
+		return true
 	end
 
 	if not Config.SmoothTravel then
@@ -1919,7 +2115,7 @@ local function travelToCFrame(destination)
 		local delta = destination.Position - root.Position
 		local distance = delta.Magnitude
 
-		if distance <= Config.TeleportDistance then
+		if distance <= Config.TravelArriveDistance then
 			reached = true
 			break
 		end
@@ -1947,11 +2143,11 @@ local function travelToCFrame(destination)
 	return reached
 end
 
-local function moveNearInstance(instance)
+local function moveNearInstance(instance, forceBypass)
 	local cframe = getInstanceCFrame(instance)
 
 	if cframe then
-		return travelToCFrame(cframe + Vector3.new(0, Config.HoverHeight, 0))
+		return travelToCFrame(cframe + Vector3.new(0, Config.HoverHeight, 0), forceBypass)
 	end
 
 	return false
@@ -2248,17 +2444,66 @@ local function findQuestByObjective(objective)
 	return best
 end
 
+function Config.TriggerQuestGiverPrompt(giver)
+	local prompt = giver and giver:FindFirstChildWhichIsA("ProximityPrompt", true)
+	local fired = false
+
+	if not prompt then
+		return false
+	end
+
+	pcall(function()
+		if typeof(fireproximityprompt) == "function" then
+			fireproximityprompt(prompt)
+			fired = true
+		end
+	end)
+
+	if not fired and typeof(firesignal) == "function" then
+		pcall(function()
+			firesignal(prompt.Triggered, LocalPlayer)
+			fired = true
+		end)
+	end
+
+	return fired
+end
+
 local function acceptQuest(quest)
 	if not quest then
 		return false, "NoQuest"
 	end
 
+	syncAndActivateQuestIsland(quest, quest.MobName, true)
 	moveNearInstance(quest.Giver)
+	syncAndActivateQuestIsland(quest, quest.MobName, true)
+	Config.TriggerQuestGiverPrompt(quest.Giver)
 	task.wait(0.25)
 
-	local ok, result = pcall(function()
-		return QuestFunction:InvokeServer(quest.Giver, quest.LevelName)
+	local ok, result, done = false, "InvokeTimeout", false
+	local startedAt = tick()
+
+	setStatus("LastAcceptInvoke", "starting")
+	task.spawn(function()
+		local success, response = pcall(function()
+			return QuestFunction:InvokeServer(quest.Giver, quest.LevelName)
+		end)
+
+		ok, result, done = success, response, true
 	end)
+
+	while not done and isRunning() and tick() - startedAt < Config.QuestInvokeTimeout do
+		task.wait(0.05)
+	end
+
+	if not done then
+		setStatus("LastAcceptInvoke", "timeout")
+		Config.TriggerQuestGiverPrompt(quest.Giver)
+
+		return false, "InvokeTimeout"
+	end
+
+	setStatus("LastAcceptInvoke", "returned")
 
 	if not ok then
 		return false, result
@@ -2276,7 +2521,10 @@ local function acceptQuest(quest)
 		end
 	end
 
-	return result == true, result
+	Config.TriggerQuestGiverPrompt(quest.Giver)
+	task.wait(0.2)
+
+	return result == true or hasActiveQuest(), result
 end
 
 local function getQuestCloseButton()
@@ -2434,6 +2682,16 @@ local function normalizeMobName(name)
 		:gsub("%d+$", "")
 end
 
+function Config.NormalizeMobNameLoose(name)
+	local key = normalizeMobName(name)
+
+	if #key > 3 and key:sub(-1) == "s" and key:sub(-2) ~= "ss" then
+		return key:sub(1, -2)
+	end
+
+	return key
+end
+
 local function addMobName(names, seen, name)
 	name = trimName(stripRichText(name))
 
@@ -2531,6 +2789,8 @@ local function mobNameMatchesTarget(mobName, target)
 	local lowerTarget = string.lower(target)
 	local normalizedName = normalizeMobName(name)
 	local normalizedTarget = normalizeMobName(target)
+	local looseName = Config.NormalizeMobNameLoose(name)
+	local looseTarget = Config.NormalizeMobNameLoose(target)
 
 	-- Exact match first (most accurate)
 	if lowerName == lowerTarget or lowerStrippedName == lowerTarget then
@@ -2539,6 +2799,10 @@ local function mobNameMatchesTarget(mobName, target)
 
 	-- Exact normalized match
 	if normalizedName ~= "" and normalizedName == normalizedTarget then
+		return true
+	end
+
+	if looseName ~= "" and looseName == looseTarget then
 		return true
 	end
 
@@ -2723,7 +2987,7 @@ end
 
 local findQuestSpawnIsland
 
-local function getConfiguredQuestIslandName(quest, targetName)
+getConfiguredQuestIslandName = function(quest, targetName)
 	targetName = trimName(targetName or (quest and quest.MobName) or "")
 
 	if targetName ~= "" and Config.QuestIslandNames[targetName] then
@@ -2990,21 +3254,23 @@ end
 local function moveNearQuestSpawnPoint(quest, targetName)
 	local spawnPoint, islandFolder, targetPoint, scanPointCount = findQuestSpawnPoint(quest, targetName)
 	local configuredTravelCFrame = getConfiguredQuestTravelCFrame(quest, targetName)
+	local islandName = syncAndActivateQuestIsland(quest, targetName, true)
 
 	setStatus("LastSpawnMoveTarget", targetName)
 	if configuredTravelCFrame then
 		setStatus("LastSpawnMovePoint", "configured_position")
 		setStatus("LastSpawnMovePath", nil)
-		setStatus("LastSpawnMoveIsland", getConfiguredQuestIslandName(quest, targetName))
+		setStatus("LastSpawnMoveIsland", islandName)
 		setStatus("LastSpawnMoveMode", "configured_position")
 		setStatus("LastSpawnMoveAnchor", nil)
 		setStatus("LastSpawnMoveScanCount", 1)
 		setStatus("LastSpawnMoveIndex", 1)
 
-		setCharacterCFrame(configuredTravelCFrame)
+		local moved = travelToCFrame(configuredTravelCFrame)
+		syncAndActivateQuestIsland(quest, targetName, true)
 		refreshNpcContainers(true)
 
-		return true
+		return moved
 	end
 
 	setStatus("LastSpawnMovePoint", spawnPoint and spawnPoint.Name or nil)
@@ -3025,7 +3291,7 @@ local function moveNearQuestSpawnPoint(quest, targetName)
 		local cframe = getInstanceCFrame(spawnPoint)
 
 		if cframe then
-			setCharacterCFrame(cframe + Vector3.new(0, Config.HoverHeight, 0))
+			travelToCFrame(cframe + Vector3.new(0, Config.HoverHeight, 0))
 			moved = true
 		end
 	else
@@ -3033,6 +3299,7 @@ local function moveNearQuestSpawnPoint(quest, targetName)
 	end
 
 	if moved then
+		syncAndActivateQuestIsland(quest, targetName, true)
 		refreshNpcContainers(true)
 	end
 
@@ -3078,6 +3345,7 @@ local function probeQuestIslandForMob(quest, targetName, reason)
 
 	local scanCFrames, islandFolder, targetPoint, source, hasConfiguredTravelCFrame = collectQuestScanCFrames(quest, targetName)
 	local scanCount = #scanCFrames
+	syncAndActivateQuestIsland(quest, targetName, true)
 
 	setStatus("LastQuestIslandScanReason", reason)
 	setStatus("LastQuestIslandScanObjective", targetName)
@@ -3139,7 +3407,8 @@ local function probeQuestIslandForMob(quest, targetName, reason)
 				targetCFrame = scanCFrame + Vector3.new(0, Config.HoverHeight, 0)
 			end
 
-			setCharacterCFrame(targetCFrame)
+			travelToCFrame(targetCFrame)
+			syncAndActivateQuestIsland(quest, targetName, attempt == 1)
 			refreshNpcContainers(true)
 			task.wait(Config.MobSpawnProbeSettleDelay)
 		end
@@ -3664,6 +3933,16 @@ local function updateToolMouse(tool, targetRoot)
 	end
 end
 
+local function fireToolActivated(tool)
+	if not Config.FireActivatedSignal or typeof(firesignal) ~= "function" or not tool then
+		return false
+	end
+
+	return pcall(function()
+		firesignal(tool.Activated)
+	end)
+end
+
 local function attackTarget(target)
 	if tick() - LastAttack < Config.AttackDelay then
 		return false
@@ -3672,6 +3951,13 @@ local function attackTarget(target)
 	local targetRoot = getRootPart(target)
 
 	if not targetRoot then
+		task.wait(Config.AttackRetryDelay)
+		targetRoot = getRootPart(target)
+	end
+
+	if not targetRoot then
+		setStatus("LastAttackResult", "missing_root")
+
 		return false
 	end
 
@@ -3681,22 +3967,44 @@ local function attackTarget(target)
 	local tool = getPreferredTool()
 
 	if not tool then
+		task.wait(Config.AttackRetryDelay)
+		tool = getPreferredTool()
+	end
+
+	if not tool then
+		setStatus("LastAttackResult", "missing_tool")
+
 		return false
 	end
 
 	LastAttack = tick()
+	setStatus("LastAttackTarget", target.Name)
+	setStatus("LastAttackTool", tool.Name)
 
 	for attackIndex = 1, Config.AttackBurst do
+		if not isAliveMob(target) then
+			break
+		end
+
+		targetRoot = getRootPart(target) or targetRoot
+
+		if not targetRoot then
+			break
+		end
+
 		lockHoverCFrame(targetRoot, true)
 		updateToolMouse(tool, targetRoot)
 		pcall(function()
 			tool:Activate()
 		end)
+		fireToolActivated(tool)
 
 		if attackIndex < Config.AttackBurst then
 			task.wait(Config.AttackBurstDelay)
 		end
 	end
+
+	setStatus("LastAttackResult", "activated")
 
 	return true
 end
@@ -3712,11 +4020,25 @@ function Config.DragonIsland.IsActive(level)
 		)
 end
 
+function Config.DragonIsland.CanHandleBossPriority(level)
+	level = tonumber(level) or getLevel()
+
+	return Config.DragonIslandLock.Enabled
+		and game.PlaceId == 14979402479
+		and level >= Config.DragonIslandLock.StartLevel
+end
+
 function Config.DragonIsland.MatchesConfiguredName(value, targetName)
 	local valueKey = normalizeMobName(value)
 	local targetKey = normalizeMobName(targetName)
+	local looseValueKey = Config.NormalizeMobNameLoose(value)
+	local looseTargetKey = Config.NormalizeMobNameLoose(targetName)
 
 	if valueKey ~= "" and valueKey == targetKey then
+		return true
+	end
+
+	if looseValueKey ~= "" and looseValueKey == looseTargetKey then
 		return true
 	end
 
@@ -3725,6 +4047,10 @@ function Config.DragonIsland.MatchesConfiguredName(value, targetName)
 	if type(aliases) == "table" then
 		for _, alias in next, aliases do
 			if valueKey ~= "" and valueKey == normalizeMobName(alias) then
+				return true
+			end
+
+			if looseValueKey ~= "" and looseValueKey == Config.NormalizeMobNameLoose(alias) then
 				return true
 			end
 		end
@@ -4019,6 +4345,8 @@ function Config.DragonIsland.ChooseFarmCandidate(candidates, level)
 end
 
 function Config.DragonIsland.FindFarmTarget(targetName, level)
+	syncCharacterLocation(Config.DragonIslandLock.IslandName)
+	activateNpcZone(Config.DragonIslandLock.IslandName, false)
 	refreshNpcContainers(false)
 
 	local _, _, playerRoot = getCharacter()
@@ -4112,7 +4440,7 @@ function Config.DragonIsland.FindAwakenBoss()
 end
 
 function Config.DragonIsland.HandleAwakenBoss(level)
-	if not Config.DragonIsland.IsActive(level) then
+	if not Config.DragonIsland.CanHandleBossPriority(level) then
 		return false
 	end
 
@@ -4218,9 +4546,14 @@ function Config.DragonIsland.IsKnownSuperBoss(model)
 
 	for _, mobName in next, mobNames do
 		local mobKey = normalizeMobName(mobName)
+		local looseMobKey = Config.NormalizeMobNameLoose(mobName)
 
 		for _, bossName in next, Config.DragonIslandLock.SuperBossNames do
 			if mobKey ~= "" and mobKey == normalizeMobName(bossName) then
+				return true
+			end
+
+			if looseMobKey ~= "" and looseMobKey == Config.NormalizeMobNameLoose(bossName) then
 				return true
 			end
 		end
@@ -4354,6 +4687,8 @@ function Config.DragonIsland.FindSuperBoss()
 
 	Config.DragonIsland.LastSuperBossCheck = tick()
 	Config.DragonIsland.SuperBossTarget = nil
+	activateNpcZone("SpecialBosses", false)
+	activateNpcZone("Spawned", false)
 
 	local _, _, playerRoot = getCharacter()
 	local closestDistance = math.huge
@@ -4390,7 +4725,7 @@ function Config.DragonIsland.FindSuperBoss()
 end
 
 function Config.DragonIsland.HandleSuperBoss(level)
-	if not Config.DragonIslandLock.SuperBossPriority or not Config.DragonIsland.IsActive(level) then
+	if not Config.DragonIslandLock.SuperBossPriority or not Config.DragonIsland.CanHandleBossPriority(level) then
 		return false
 	end
 
@@ -4557,6 +4892,8 @@ function PriorityBoss.FindTarget(priorityConfig)
 	end
 
 	LastPriorityBossCheck[bossKey] = tick()
+	activateNpcZone("SpecialBosses", false)
+	activateNpcZone("Spawned", false)
 	refreshNpcContainers(true)
 
 	local bossName = tostring(priorityConfig.BossName or "")
@@ -4608,13 +4945,17 @@ function PriorityBoss.HandleOne(priorityConfig)
 	local priorityKey = PriorityBoss.GetStatusKey(priorityConfig, "BossPriority")
 	local bossName = tostring(priorityConfig.BossName or "")
 
-	if PriorityBoss.HasSword(priorityConfig) then
+	local hasSword = PriorityBoss.HasSword(priorityConfig)
+
+	if hasSword and priorityConfig.SkipWhenOwned then
 		PriorityBoss.Targets = PriorityBoss.Targets or {}
 		PriorityBoss.Targets[bossKey] = nil
 		PriorityBoss.Target = nil
 		setStatus(priorityKey, PriorityBoss.GetOwnedState(priorityConfig))
 
 		return false, true
+	elseif hasSword then
+		setStatus(PriorityBoss.GetStatusKey(priorityConfig, "OwnedBossFarm"), "enabled")
 	end
 
 	local target = PriorityBoss.FindTarget(priorityConfig)
@@ -4683,6 +5024,7 @@ function PriorityBoss.Handle()
 	return false
 end
 
+local runSea3UnlockFlow = (function()
 local function getSea3Gatekeeper()
 	local npcWorkspace = workspace:FindFirstChild("Npc_Workspace")
 	local sea3Unlocker = npcWorkspace and npcWorkspace:FindFirstChild("Sea3Unlocker")
@@ -5126,7 +5468,84 @@ local function shouldRunSea3Unlock(level)
 	return Config.Sea3Gate.IsReady(level)
 end
 
-local function queueSea3Runner()
+function Config.Sea3Gate.IsValidQueueSource(source)
+	if type(source) ~= "string" or source == "" then
+		return false
+	end
+
+	local sourceHead = string.sub(source, 1, 200)
+
+	if string.find(sourceHead, "404: Not Found", 1, true)
+		or string.find(string.lower(sourceHead), "<html", 1, true)
+	then
+		return false
+	end
+
+	return string.find(source, "HSKaitun", 1, true) ~= nil
+end
+
+function Config.Sea3Gate.FetchQueueSource(url)
+	local success, source = pcall(function()
+		return game:HttpGet(url)
+	end)
+
+	if not Config.Sea3Gate.IsValidQueueSource(source) then
+		success = false
+		source = nil
+
+		if type(request) == "function" then
+			success, source = pcall(function()
+				local response = request({
+					Url = url,
+					Method = "GET",
+				})
+
+				return response and response.Body or nil
+			end)
+		elseif type(syn) == "table" and type(syn.request) == "function" then
+			success, source = pcall(function()
+				local response = syn.request({
+					Url = url,
+					Method = "GET",
+				})
+
+				return response and response.Body or nil
+			end)
+		end
+	end
+
+	if success and Config.Sea3Gate.IsValidQueueSource(source) then
+		return source
+	end
+
+	return nil
+end
+
+function Config.Sea3Gate.GetQueueSource()
+	if Config.Sea3Gate.IsValidQueueSource(Config.QueueSea3Source) then
+		setStatus("Sea3QueueSource", "config")
+
+		return Config.QueueSea3Source
+	end
+
+	for _, url in next, Config.QueueSea3Urls do
+		local source = Config.Sea3Gate.FetchQueueSource(url)
+
+		if source then
+			Config.QueueSea3Source = source
+			setStatus("Sea3QueueSource", "url")
+			setStatus("Sea3QueueSourceUrl", url)
+
+			return source
+		end
+	end
+
+	setStatus("Sea3QueueSource", "missing")
+
+	return nil
+end
+
+function Config.Sea3Gate.QueueRunner()
 	local queueOnTeleport = nil
 
 	if type(queue_on_teleport) == "function" then
@@ -5139,14 +5558,16 @@ local function queueSea3Runner()
 		queueOnTeleport = fluxus.queue_on_teleport
 	end
 
-	if not queueOnTeleport or type(Config.QueueSea3Source) ~= "string" or Config.QueueSea3Source == "" then
+	local queueSource = Config.Sea3Gate.GetQueueSource()
+
+	if not queueOnTeleport or type(queueSource) ~= "string" or queueSource == "" then
 		setStatus("Sea3Queue", "missing")
 
 		return false
 	end
 
 	local success = pcall(function()
-		queueOnTeleport(Config.QueueSea3Source)
+		queueOnTeleport(queueSource)
 	end)
 
 	setStatus("Sea3Queue", success and "queued" or "failed")
@@ -5154,7 +5575,7 @@ local function queueSea3Runner()
 	return success
 end
 
-local function requestSea3Teleport()
+function Config.Sea3Gate.RequestTeleport()
 	local workspaceSeaIndex = tonumber(workspace:GetAttribute("Sea") or 0) or 0
 
 	if workspaceSeaIndex >= 3 then
@@ -5179,7 +5600,7 @@ local function requestSea3Teleport()
 	end
 
 	LastSea3TeleportAt = tick()
-	queueSea3Runner()
+	Config.Sea3Gate.QueueRunner()
 
 	local teleportTarget = getSea3TeleportTarget()
 	local teleportRemote = getTeleportRemote(teleportTarget)
@@ -5221,7 +5642,7 @@ local function requestSea3Teleport()
 	return true
 end
 
-local function runSea3UnlockFlow(level)
+local function runSea3UnlockFlowImpl(level)
 	if not shouldRunSea3Unlock(level) then
 		return false
 	end
@@ -5234,7 +5655,7 @@ local function runSea3UnlockFlow(level)
 
 	if isSea3Unlocked() then
 		CurrentTarget = nil
-		return requestSea3Teleport()
+		return Config.Sea3Gate.RequestTeleport()
 	end
 
 	local questState = getQuestState()
@@ -5287,7 +5708,11 @@ local function runSea3UnlockFlow(level)
 	return true
 end
 
-local function antiAfkPulse(reason)
+assert(type(fightRedEmperorTarget) == "function", "red emperor fight helper missing")
+return runSea3UnlockFlowImpl
+end)()
+
+function Config.AntiAfkPulse(reason)
 	if not Config.AntiAfk then
 		return
 	end
@@ -5315,13 +5740,13 @@ local function antiAfkPulse(reason)
 end
 
 table.insert(Connections, LocalPlayer.Idled:Connect(function()
-	antiAfkPulse("idled")
+	Config.AntiAfkPulse("idled")
 end))
 
 task.spawn(function()
 	while isRunning() do
 		task.wait(Config.AntiAfkInterval)
-		antiAfkPulse("interval")
+		Config.AntiAfkPulse("interval")
 	end
 end)
 
@@ -5378,9 +5803,10 @@ assert(type(selectQuestForLevel) == "function", "quest selector missing")
 assert(type(selectFarmQuest) == "function", "farm quest selector missing")
 assert(type(findMob) == "function", "mob finder missing")
 assert(type(cancelActiveQuest) == "function", "quest cancel helper missing")
-assert(type(fightRedEmperorTarget) == "function", "red emperor fight helper missing")
 assert(type(runSea3UnlockFlow) == "function", "sea3 unlock helper missing")
-assert(type(queueSea3Runner) == "function", "sea3 queue helper missing")
+assert(type(Config.Sea3Gate.QueueRunner) == "function", "sea3 queue helper missing")
+assert(type(Config.Sea3Gate.GetQueueSource) == "function", "sea3 queue source helper missing")
+assert(type(Config.Sea3Gate.RequestTeleport) == "function", "sea3 teleport request helper missing")
 assert(type(refundStatsBeforeUpgrade) == "function", "stat refund helper missing")
 assert(type(RefundStats.GetPoints) == "function", "refund point helper missing")
 assert(type(RefundStats.FireEvent) == "function", "stats refund event helper missing")
@@ -5389,13 +5815,14 @@ assert(type(Config.DragonIsland.SelectQuest) == "function", "dragon island quest
 assert(type(Config.DragonIsland.FindTargetForObjective) == "function", "dragon island split target helper missing")
 assert(type(Config.DragonIsland.HandleAwakenBoss) == "function", "dragon boss handler missing")
 assert(type(Config.DragonIsland.HandleSuperBoss) == "function", "dragon island super boss handler missing")
+assert(type(Config.DragonIsland.CanHandleBossPriority) == "function", "dragon island boss priority gate missing")
 assert(type(equipInventoryItem) == "function", "inventory equip helper missing")
 assert(type(clearHoverGyro) == "function", "world 2 hover gyro cleanup missing")
 assert(Config.PreferTool == "Shusui", "world 2 shusui preference missing")
 assert(Config.SwordMasterySwitch.TargetMastery == 310, "world 2 sword mastery switch target missing")
 assert(Config.SwordMasterySwitch.BaseSword == "Shusui" and Config.SwordMasterySwitch.SecondarySword == "Enma" and Config.SwordMasterySwitch.FinalSword == "Zenith", "world 2 sword mastery switch order missing")
 assert(type(Config.SwordSelector.SelectTool) == "function", "world 2 sword selector missing")
-assert(Config.Sea3RequiredLevel == 4500 and Config.Sea3RequiredGems == 1000 and Config.Sea3RequiredSwordMastery == 310, "world 2 sea3 gate config missing")
+assert(Config.Sea3RequiredLevel == 4500 and type(Config.Sea3RequiredGems) == "number" and Config.Sea3RequiredGems > 0 and type(Config.Sea3RequiredSwordMastery) == "number" and Config.Sea3RequiredSwordMastery > 0, "world 2 sea3 gate config missing")
 assert(Config.Sea3RequiredSwords[1] == "Shusui" and Config.Sea3RequiredSwords[2] == "Enma" and Config.Sea3RequiredSwords[3] == "Zenith", "world 2 sea3 mastery swords missing")
 assert(type(Config.Sea3Gate.IsReady) == "function", "world 2 sea3 gate helper missing")
 assert(Config.EnmaBossPriority.BossName == "Enma Boss" and Config.EnmaBossPriority.SwordName == "Enma", "enma boss priority config missing")
@@ -5405,6 +5832,8 @@ assert(Config.DragonIslandLock.StartLevel == 3050 and Config.DragonIslandLock.En
 assert(Config.DragonIslandLock.AwakenBossName == "Dragon Boss" and Config.DragonIslandLock.AwakenSoulTarget == 999, "dragon awaken boss config missing")
 assert(Config.DragonIslandLock.QuestNames[1] == "Elite Beast" and Config.DragonIslandLock.QuestNames[2] == "Beast Pirate", "dragon island quest targets missing")
 assert(Config.DragonIslandLock.SuperBossPriority == true and #Config.DragonIslandLock.SuperBossNames >= 10, "dragon island super boss priority config missing")
+assert(Config.NormalizeMobNameLoose("Elite Beasts") == Config.NormalizeMobNameLoose("Elite Beast"), "plural mob match missing")
+assert(Config.DragonIsland.MatchesConfiguredName("Beast Pirates", "Beast Pirate"), "dragon island plural quest alias missing")
 assert(Config.SwordTopDownHover == true and Config.SwordHoverPitch == -90, "world 2 sword top-down hover missing")
 assert(Config.SwordHoverGyroMaxTorque >= 10000, "world 2 sword hover gyro config missing")
 assert(Config.StatOrder[1] == "Sword" and Config.StatOrder[2] == "Defense" and Config.StatOrder[3] == "Fruit", "world 2 stat order missing")
@@ -5444,11 +5873,6 @@ task.spawn(function()
 			setStatus("ActiveTarget", questState.Target)
 			ensureAutoHaki(CurrentTarget)
 
-			if runSea3UnlockFlow(level) then
-				task.wait(Config.LoopDelay)
-				continue
-			end
-
 			if PriorityBoss.Handle() then
 				task.wait(Config.LoopDelay)
 				continue
@@ -5460,6 +5884,11 @@ task.spawn(function()
 			end
 
 			if Config.DragonIsland.HandleSuperBoss(level) then
+				task.wait(Config.LoopDelay)
+				continue
+			end
+
+			if runSea3UnlockFlow(level) then
 				task.wait(Config.LoopDelay)
 				continue
 			end
@@ -5588,7 +6017,14 @@ task.spawn(function()
 			if objective == "" then
 				local questReason = nil
 
-				CurrentQuest, questReason = selectFarmQuest(farmLevel)
+				if TimeoutFarmQuest and tick() < TimeoutFarmUntil then
+					CurrentQuest = TimeoutFarmQuest
+					questReason = "quest_timeout_farm"
+				else
+					TimeoutFarmQuest = nil
+					CurrentQuest, questReason = selectFarmQuest(farmLevel)
+				end
+
 				setStatus("SelectedQuest", CurrentQuest and (CurrentQuest.LevelName .. " " .. CurrentQuest.MobName) or nil)
 				setStatus("SelectedQuestReason", questReason or "normal")
 
@@ -5602,6 +6038,9 @@ task.spawn(function()
 					debugPrint("Quest", CurrentQuest.LevelName, CurrentQuest.MobName, questReason or "normal", accepted, result)
 
 					if accepted then
+						TimeoutFarmQuest = nil
+						TimeoutFarmUntil = 0
+						setStatus("QuestRetryHold", nil)
 						task.wait(0.35)
 						questState = getQuestState()
 						objective = questState.Objective ~= "" and questState.Objective or CurrentQuest.MobName
@@ -5621,7 +6060,16 @@ task.spawn(function()
 							LastTargetSearch = tick()
 						end
 					else
-						moveNearInstance(CurrentQuest.Giver)
+						if tostring(result) == "InvokeTimeout" then
+							TimeoutFarmQuest = CurrentQuest
+							TimeoutFarmUntil = tick() + Config.QuestTimeoutFarmDelay
+							LastQuestAttempt = tick() + math.max(Config.QuestTimeoutFarmDelay - Config.QuestRetryDelay, 0)
+							setStatus("QuestRetryHold", Config.QuestTimeoutFarmDelay)
+							setStatus("QuestRetryHoldTarget", CurrentQuest.MobName)
+						else
+							moveNearInstance(CurrentQuest.Giver)
+						end
+
 						objective = CurrentQuest.MobName
 					end
 				elseif CurrentQuest then
@@ -5935,13 +6383,8 @@ Array.Config.World2AutoFarm.ScriptUrls = type(Array.Config.World2AutoFarm.Script
 	or {
 		"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/Haze%20Sea2.lua",
 	}
-Array.Config.World2AutoFarm.ScriptPaths = type(Array.Config.World2AutoFarm.ScriptPaths) == "table"
-	and Array.Config.World2AutoFarm.ScriptPaths
-	or {
-		"Haze Seas/Haze Sea2.lua",
-		"Haze Seas\\Haze Sea2.lua",
-	}
-Array.Config.World2AutoFarm.DirectLoadstring = Array.Config.World2AutoFarm.DirectLoadstring ~= false
+Array.Config.World2AutoFarm.DirectLoadstring = false
+Array.Config.World2AutoFarm.StandaloneWait = math.max(tonumber(Array.Config.World2AutoFarm.StandaloneWait) or 4, 0)
 Array.Config.World2AutoFarm.PreferTool = tostring(Array.Config.World2AutoFarm.PreferTool or "Shusui")
 Array.Config.World2AutoFarm.RequirePreferTool = Array.Config.World2AutoFarm.RequirePreferTool ~= false
 Array.Config.World2AutoFarm.AutoRefundStats = Array.Config.World2AutoFarm.AutoRefundStats ~= false
@@ -5959,6 +6402,9 @@ Array.Config.World2AutoFarm.StatOrder[3] = "Fruit"
 Array.Config.World2AutoFarm.ForceFarmLevelEnabled = Array.Config.World2AutoFarm.ForceFarmLevelEnabled == true
 Array.Config.World3Shrine = type(Array.Config.World3Shrine) == "table" and Array.Config.World3Shrine or {}
 Array.Config.World3Shrine.Enabled = Array.Config.World3Shrine.Enabled ~= false
+Array.Config.World3Shrine.RockModelName = tostring(Array.Config.World3Shrine.RockModelName or "3SSRock")
+Array.Config.World3Shrine.UnlockRemoteName = tostring(Array.Config.World3Shrine.UnlockRemoteName or "Unlock")
+Array.Config.World3Shrine.UseDirectUnlock = Array.Config.World3Shrine.UseDirectUnlock ~= false
 Array.Config.World3Shrine.PromptObjectText = tostring(Array.Config.World3Shrine.PromptObjectText or "Shrine of Three Swords")
 Array.Config.World3Shrine.PromptActionText = tostring(Array.Config.World3Shrine.PromptActionText or "Interact")
 Array.Config.World3Shrine.RequiredMastery = math.max(math.floor(tonumber(Array.Config.World3Shrine.RequiredMastery) or 300), 0)
@@ -5981,6 +6427,7 @@ Array.Config.World3Shrine.RewardNames = type(Array.Config.World3Shrine.RewardNam
 		"Three Sword",
 		"3 Swords",
 		"3 Sword",
+		"3 Sword Style",
 		"Three Sword Style",
 		"Santoryu",
 	}
@@ -6385,31 +6832,6 @@ function Array.Function.GetQueueOnTeleport()
 end
 
 function Array.Function.GetQueueSource()
-	Array.State.QueuePaths = {
-		"Haze Seas/HS Kaitun.lua",
-		"Haze Seas\\HS Kaitun.lua",
-		"HS Kaitun.lua",
-	}
-
-	if type(readfile) == "function" then
-		for _, Path in next, Array.State.QueuePaths do
-			Array.State.QueueSourceSuccess, Array.State.QueueSource = pcall(function()
-				return readfile(Path)
-			end)
-
-			if Array.State.QueueSourceSuccess
-				and type(Array.State.QueueSource) == "string"
-				and #Array.State.QueueSource > 0
-				and string.find(Array.State.QueueSource, "HSKaitun", 1, true)
-			then
-				Array.Function.SetStatus("QueueSource", "file")
-				Array.Function.SetStatus("QueueSourcePath", Path)
-
-				return Array.State.QueueSource
-			end
-		end
-	end
-
 	if type(Array.Config.QueueUrls) == "table" then
 		for _, Url in next, Array.Config.QueueUrls do
 			Array.State.QueueSourceSuccess, Array.State.QueueSource = pcall(function()
@@ -6561,14 +6983,34 @@ function Array.Function.IsWorld2AutoFarmSource(Source)
 		return false
 	end
 
-	if string.find(Source, "404: Not Found", 1, true)
-		or string.find(string.lower(string.sub(Source, 1, 200)), "<html", 1, true)
+	local SourceHead = string.sub(Source, 1, 200)
+
+	if string.find(SourceHead, "404: Not Found", 1, true)
+		or string.find(string.lower(SourceHead), "<html", 1, true)
 	then
 		return false
 	end
 
 	return string.find(Source, "HazeSeasAutoFarm", 1, true) ~= nil
 		and string.find(Source, "14979402479", 1, true) ~= nil
+end
+
+function Array.Function.NormalizeWorld2AutoFarmSource(Source)
+	if type(Source) ~= "string" then
+		return Source
+	end
+
+	local StrictSea3GateAssert = 'assert(Config.Sea3RequiredLevel == 4500 and Config.Sea3RequiredGems == 1000 and Config.Sea3RequiredSwordMastery == 310, "world 2 sea3 gate config missing")'
+	local FlexibleSea3GateAssert = 'assert(Config.Sea3RequiredLevel == 4500 and type(Config.Sea3RequiredGems) == "number" and Config.Sea3RequiredGems > 0 and type(Config.Sea3RequiredSwordMastery) == "number" and Config.Sea3RequiredSwordMastery > 0, "world 2 sea3 gate config missing")'
+	local StartIndex, EndIndex = string.find(Source, StrictSea3GateAssert, 1, true)
+
+	if not StartIndex then
+		return Source
+	end
+
+	Array.Function.SetStatus("World2AutoFarmPatch", "sea3_gate_assert")
+
+	return string.sub(Source, 1, StartIndex - 1) .. FlexibleSea3GateAssert .. string.sub(Source, EndIndex + 1)
 end
 
 function Array.Function.GetWorld2AutoFarmSource()
@@ -6578,6 +7020,12 @@ function Array.Function.GetWorld2AutoFarmSource()
 		return _G.HazeSeasAutoFarmSource
 	elseif type(_G.HazeSeasAutoFarmSource) == "string" and #_G.HazeSeasAutoFarmSource > 0 then
 		Array.Function.SetStatus("World2AutoFarmExternalSource", "invalid")
+	end
+
+	if Array.Function.IsWorld2AutoFarmSource(Array.World2AutoFarmCode) then
+		Array.Function.SetStatus("World2AutoFarmRead", "embedded")
+
+		return Array.World2AutoFarmCode
 	end
 
 	if type(Array.Config.World2AutoFarm.ScriptUrls) == "table" then
@@ -6643,31 +7091,6 @@ function Array.Function.GetWorld2AutoFarmSource()
 		end
 	end
 
-	if Array.Function.IsWorld2AutoFarmSource(Array.World2AutoFarmCode) then
-		Array.Function.SetStatus("World2AutoFarmRead", "embedded")
-
-		return Array.World2AutoFarmCode
-	end
-
-	if type(readfile) == "function" then
-		for _, Path in next, Array.Config.World2AutoFarm.ScriptPaths do
-			Array.State.World2AutoFarmReadSuccess, Array.State.World2AutoFarmSource = pcall(function()
-				return readfile(Path)
-			end)
-
-			if Array.Function.IsWorld2AutoFarmSource(Array.State.World2AutoFarmSource) then
-				Array.Function.SetStatus("World2AutoFarmRead", "loaded")
-				Array.Function.SetStatus("World2AutoFarmPath", Path)
-
-				return Array.State.World2AutoFarmSource
-			elseif type(Array.State.World2AutoFarmSource) == "string" and #Array.State.World2AutoFarmSource > 0 then
-				Array.Function.SetStatus("World2AutoFarmPathRejected", Path)
-			end
-		end
-	else
-		Array.Function.SetStatus("World2AutoFarmRead", "missing_readfile")
-	end
-
 	Array.Function.SetStatus("World2AutoFarmRead", "missing_file")
 
 	return nil
@@ -6716,6 +7139,8 @@ function Array.Function.FetchWorld2AutoFarmUrl(Url)
 end
 
 function Array.Function.RunWorld2AutoFarmSource(Source, ReadMode, SourceValue)
+	Source = Array.Function.NormalizeWorld2AutoFarmSource(Source)
+
 	if not Array.Function.IsWorld2AutoFarmSource(Source) then
 		Array.Function.SetStatus("World2AutoFarm", "invalid_source")
 
@@ -6789,9 +7214,24 @@ function Array.Function.StartWorld2AutoFarmScript()
 		return false
 	end
 
+	if _G.HazeSea2AutoExecutorPresent == true then
+		Array.Function.SetStatus("World2AutoFarm", "standalone_wait")
+		task.wait(Array.Config.World2AutoFarm.StandaloneWait)
+
+		if type(_G.HazeSeasAutoFarm) == "table" and _G.HazeSeasAutoFarm.Enabled ~= false then
+			Array.State.World2AutoFarmStarted = true
+			Array.Function.SetStatus("World2AutoFarm", "standalone_running")
+			Array.Function.SetStatus("World2AutoFarmRead", "auto_executor_file")
+
+			return true
+		end
+
+		Array.Function.SetStatus("World2AutoFarm", "standalone_missing")
+	end
+
 	Array.Function.ConfigureWorld2AutoFarm()
 
-	if Array.Function.StartWorld2DirectLoadstring() then
+	if Array.Config.World2AutoFarm.DirectLoadstring and Array.Function.StartWorld2DirectLoadstring() then
 		return true
 	end
 
@@ -6861,7 +7301,9 @@ function Array.Function.FindWorld3RewardInPlayerData(Root, Depth)
 			return tonumber(Root.Value) and tonumber(Root.Value) > 0 and Root or nil
 		end
 
-		return Root
+		if Root:IsA("StringValue") then
+			return Array.Function.IsWorld3RewardName(Root.Value) and Root or nil
+		end
 	end
 
 	if Root:IsA("StringValue") and Array.Function.IsWorld3RewardName(Root.Value) then
@@ -7140,6 +7582,16 @@ function Array.Function.MoveToWorld3ShrinePrompt(Prompt)
 	return Array.State.World3ShrineMoveSuccess
 end
 
+function Array.Function.GetWorld3ShrineModel()
+	Array.State.World3ShrineModel = workspace:FindFirstChild(Array.Config.World3Shrine.RockModelName)
+	Array.Function.SetStatus(
+		"World3ShrineModel",
+		Array.State.World3ShrineModel and Array.State.World3ShrineModel:GetFullName() or nil
+	)
+
+	return Array.State.World3ShrineModel
+end
+
 function Array.Function.GetWorld3ShrineRemote(Root, Depth)
 	if not Root or (Depth or 0) > 4 then
 		return nil
@@ -7152,6 +7604,8 @@ function Array.Function.GetWorld3ShrineRemote(Root, Depth)
 			if Array.State.World3ShrineRemoteKey == "interact"
 				or Array.State.World3ShrineRemoteKey == "claim"
 				or Array.State.World3ShrineRemoteKey == "buy"
+				or Array.State.World3ShrineRemoteKey == "unlock"
+				or string.find(Array.State.World3ShrineRemoteKey, "3ss", 1, true)
 				or string.find(Array.State.World3ShrineRemoteKey, "threesword", 1, true)
 				or string.find(Array.State.World3ShrineRemoteKey, "shrine", 1, true)
 			then
@@ -7167,6 +7621,65 @@ function Array.Function.GetWorld3ShrineRemote(Root, Depth)
 	end
 
 	return nil
+end
+
+function Array.Function.GetWorld3ShrineUnlockRemote()
+	Array.State.World3ShrineDirectModel = Array.Function.GetWorld3ShrineModel()
+	Array.State.World3ShrineDirectRemote = nil
+
+	if Array.State.World3ShrineDirectModel then
+		Array.State.World3ShrineDirectRemote = Array.State.World3ShrineDirectModel:FindFirstChild(
+			Array.Config.World3Shrine.UnlockRemoteName
+		)
+
+		if not (
+			Array.State.World3ShrineDirectRemote
+			and (
+				Array.State.World3ShrineDirectRemote:IsA("RemoteFunction")
+				or Array.State.World3ShrineDirectRemote:IsA("RemoteEvent")
+			)
+		) then
+			Array.State.World3ShrineDirectRemote = Array.Function.GetWorld3ShrineRemote(
+				Array.State.World3ShrineDirectModel,
+				0
+			)
+		end
+	end
+
+	Array.Function.SetStatus(
+		"World3ShrineUnlockRemote",
+		Array.State.World3ShrineDirectRemote and Array.State.World3ShrineDirectRemote:GetFullName() or nil
+	)
+
+	return Array.State.World3ShrineDirectRemote
+end
+
+function Array.Function.InvokeWorld3ShrineUnlockRemote()
+	if not Array.Config.World3Shrine.UseDirectUnlock then
+		return false
+	end
+
+	Array.State.World3ShrineUnlockRemote = Array.Function.GetWorld3ShrineUnlockRemote()
+
+	if not Array.State.World3ShrineUnlockRemote then
+		Array.Function.SetStatus("World3ShrineUnlock", "missing")
+
+		return false
+	end
+
+	Array.State.World3ShrineUnlockSuccess, Array.State.World3ShrineUnlockResult = pcall(function()
+		if Array.State.World3ShrineUnlockRemote:IsA("RemoteFunction") then
+			return Array.State.World3ShrineUnlockRemote:InvokeServer()
+		end
+
+		Array.State.World3ShrineUnlockRemote:FireServer()
+		return true
+	end)
+
+	Array.Function.SetStatus("World3ShrineUnlock", Array.State.World3ShrineUnlockSuccess and "fired" or "failed")
+	Array.Function.SetStatus("World3ShrineUnlockResult", tostring(Array.State.World3ShrineUnlockResult))
+
+	return Array.State.World3ShrineUnlockSuccess
 end
 
 function Array.Function.InvokeWorld3ShrineRemote(Prompt)
@@ -7203,6 +7716,7 @@ function Array.Function.InvokeWorld3ShrineRemote(Prompt)
 	end)
 
 	Array.Function.SetStatus("World3ShrineRemote", Array.State.World3ShrineRemoteSuccess and "fired" or "failed")
+	Array.Function.SetStatus("World3ShrineRemotePath", Array.State.World3ShrineRemote:GetFullName())
 	Array.Function.SetStatus("World3ShrineRemoteResult", tostring(Array.State.World3ShrineRemoteResult))
 
 	return Array.State.World3ShrineRemoteSuccess
@@ -7223,6 +7737,14 @@ function Array.Function.TriggerWorld3ShrinePrompt(Prompt)
 
 	Array.State.World3ShrinePromptFired = false
 	Array.State.World3ShrineHoldDuration = math.max(tonumber(Prompt.HoldDuration) or 0, 0)
+
+	if type(fireproximityprompt) == "function" then
+		Array.State.World3ShrineFirePromptSuccess = pcall(function()
+			fireproximityprompt(Prompt)
+		end)
+		Array.State.World3ShrinePromptFired =
+			Array.State.World3ShrinePromptFired or Array.State.World3ShrineFirePromptSuccess
+	end
 
 	Array.State.World3ShrineInputSuccess = pcall(function()
 		Prompt:InputHoldBegin()
@@ -7251,11 +7773,14 @@ function Array.Function.TriggerWorld3ShrinePrompt(Prompt)
 		end)
 	end
 
-	if not Array.State.World3ShrinePromptFired then
-		Array.State.World3ShrinePromptFired = Array.Function.InvokeWorld3ShrineRemote(Prompt)
-	else
-		Array.Function.InvokeWorld3ShrineRemote(Prompt)
+	Array.State.World3ShrineRemoteFired = Array.Function.InvokeWorld3ShrineRemote(Prompt)
+
+	if not Array.State.World3ShrineRemoteFired then
+		Array.State.World3ShrineRemoteFired = Array.Function.InvokeWorld3ShrineUnlockRemote()
 	end
+
+	Array.State.World3ShrinePromptFired =
+		Array.State.World3ShrinePromptFired or Array.State.World3ShrineRemoteFired
 
 	Array.Function.SetStatus("World3ShrineInteract", Array.State.World3ShrinePromptFired and "fired" or "failed")
 
@@ -13657,14 +14182,17 @@ assert(type(Array.Function.StartWorld3Script) == "function", "world 3 script mis
 assert(type(Array.Function.StartWorld3ShrineLoop) == "function", "world 3 shrine loop missing")
 assert(type(Array.Function.FindWorld3ShrinePrompt) == "function", "world 3 shrine prompt finder missing")
 assert(type(Array.Function.TriggerWorld3ShrinePrompt) == "function", "world 3 shrine prompt trigger missing")
+assert(type(Array.Function.GetWorld3ShrineUnlockRemote) == "function", "world 3 shrine unlock remote finder missing")
+assert(type(Array.Function.InvokeWorld3ShrineUnlockRemote) == "function", "world 3 shrine unlock remote invoke missing")
 assert(type(Array.Function.GetSwordMastery) == "function", "sword mastery helper missing")
 assert(type(Array.Function.StartWorld2AutoFarmScript) == "function", "world 2 auto farm loader missing")
 assert(type(Array.Function.StartWorld2DirectLoadstring) == "function", "world 2 direct loadstring missing")
 assert(Array.Config.World2AutoFarm.DirectLoadstring == true or Array.Config.World2AutoFarm.DirectLoadstring == false, "world 2 direct loadstring config missing")
+assert(type(Array.Config.World2AutoFarm.StandaloneWait) == "number", "world 2 standalone wait missing")
 assert(type(Array.Function.IsWorld2AutoFarmSource) == "function" and Array.Function.IsWorld2AutoFarmSource(Array.World2AutoFarmCode), "world 2 source validator failed")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Config.PreferTool = \"Shusui\"", 1, true), "world 2 embedded auto farm missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "SwordMasterySwitch", 1, true), "world 2 sword mastery switch missing")
-assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Sea3RequiredGems = 1000", 1, true), "world 2 sea3 gate missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Sea3RequiredGems = 2000", 1, true), "world 2 sea3 gate missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Zenith Boss", 1, true), "world 2 zenith boss priority missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Dragon Boss", 1, true), "world 2 dragon boss priority missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "HandleSuperBoss", 1, true), "world 2 super boss priority missing")
@@ -13679,6 +14207,7 @@ assert(Array.Config.AllowedPlaceIds[Array.Config.PlaceId.World3] == true, "world
 assert(Array.Config.World3Shrine.RequiredSwords[1] == "Shusui" and Array.Config.World3Shrine.RequiredSwords[2] == "Enma" and Array.Config.World3Shrine.RequiredSwords[3] == "Zenith", "world 3 shrine swords missing")
 assert(Array.Config.World3Shrine.RequiredMastery == 300, "world 3 shrine mastery config missing")
 assert(Array.Config.World3Shrine.PromptObjectText == "Shrine of Three Swords", "world 3 shrine prompt config missing")
+assert(Array.Config.World3Shrine.RockModelName == "3SSRock" and Array.Config.World3Shrine.UnlockRemoteName == "Unlock", "world 3 shrine unlock config missing")
 assert(Array.Config.BypassTeleportMode == "Velocity" or Array.Config.BypassTeleportMode == "Motor6D" or Array.Config.BypassTeleportMode == "Step", "bypass teleport mode missing")
 assert(Array.Config.AutoFarm.Enabled == true or Array.Config.AutoFarm.Enabled == false, "auto farm config missing")
 assert(Array.Function.IsSafePosition(Vector3.new(0, Array.Config.AutoFarm.SafePositionFloor + 1, 0)), "safe position guard missing")
