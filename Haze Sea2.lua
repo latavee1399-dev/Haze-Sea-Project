@@ -265,9 +265,11 @@ Config.ForceFarmLevel = tonumber(Config.ForceFarmLevel) or 2850
 Config.ForceFarmStartTravel = Config.ForceFarmStartTravel ~= false
 Config.ForceFarmStartDelay = math.max(tonumber(Config.ForceFarmStartDelay) or 0.5, 0)
 Config.DragonIslandLock = type(Config.DragonIslandLock) == "table" and Config.DragonIslandLock or {}
-Config.DragonIslandLock.Enabled = Config.DragonIslandLock.Enabled ~= false
+Config.DragonIslandLock.Enabled = false
 Config.DragonIslandLock.StartLevel = tonumber(Config.DragonIslandLock.StartLevel) or 3050
 Config.DragonIslandLock.EndLevel = tonumber(Config.DragonIslandLock.EndLevel) or 4500
+Config.DragonIslandLock.PostMaxEnabled = Config.DragonIslandLock.PostMaxEnabled ~= false
+Config.DragonIslandLock.PostMaxLevel = math.max(1, math.floor(tonumber(Config.DragonIslandLock.PostMaxLevel) or 4750))
 Config.DragonIslandLock.SplitStartLevel = tonumber(Config.DragonIslandLock.SplitStartLevel) or 3200
 Config.DragonIslandLock.IslandName = tostring(Config.DragonIslandLock.IslandName or "Dragon Island")
 Config.DragonIslandLock.AwakenBossName = tostring(Config.DragonIslandLock.AwakenBossName or "Dragon Boss")
@@ -309,13 +311,13 @@ Config.DragonIslandLock.SuperBossNames[12] = "Sea Monster"
 Config.DragonIslandLock.SuperBossNames[13] = "Dough Boss"
 Config.DragonIslandLock.SuperBossNames[14] = "Favela Shanks' Mother"
 Config.Sea3Unlock = Config.Sea3Unlock ~= false
-Config.Sea3RequiredLevel = 4500
-Config.Sea3RequiredGems = 2000
-Config.Sea3RequiredSwordMastery = 300
+Config.Sea3RequiredLevel = 4200
+Config.Sea3RequiredGems = 0
+Config.Sea3RequiredSwordMastery = 0
 Config.Sea3RequiredSwords = type(Config.Sea3RequiredSwords) == "table" and Config.Sea3RequiredSwords or {}
-Config.Sea3RequiredSwords[1] = "Shusui"
-Config.Sea3RequiredSwords[2] = "Enma"
-Config.Sea3RequiredSwords[3] = "Zenith"
+Config.Sea3RequiredSwords[1] = "Enma"
+Config.Sea3RequiredSwords[2] = "Zenith"
+Config.Sea3RequiredSwords[3] = nil
 Config.Sea3Gate = type(Config.Sea3Gate) == "table" and Config.Sea3Gate or {}
 Config.Sea3InteractDelay = math.max(1, tonumber(Config.Sea3InteractDelay) or 3)
 Config.Sea3AcceptTimeout = math.max(1, tonumber(Config.Sea3AcceptTimeout) or 8)
@@ -3225,27 +3227,24 @@ function Config.Sea3Gate.GetGems()
 	return gems
 end
 
-function Config.Sea3Gate.CheckSwordMastery()
+function Config.Sea3Gate.CheckRequiredSwords()
 	local allReady = true
 	local missing = {}
 
-	setStatus("Sea3RequiredSwordMastery", Config.Sea3RequiredSwordMastery)
-
 	for _, swordName in next, Config.Sea3RequiredSwords do
-		local mastery = Config.SwordSelector.GetMastery(swordName)
-		local ready = mastery >= Config.Sea3RequiredSwordMastery
+		local owned = Config.SwordSelector.HasSword(swordName)
 		local statusName = Config.SwordSelector.GetStatusName(swordName)
 
-		setStatus("Sea3" .. statusName .. "MasteryReady", ready)
+		setStatus("Sea3" .. statusName .. "Owned", owned)
 
-		if not ready then
+		if not owned then
 			allReady = false
-			table.insert(missing, swordName .. ":" .. tostring(mastery) .. "/" .. tostring(Config.Sea3RequiredSwordMastery))
+			table.insert(missing, swordName)
 		end
 	end
 
-	setStatus("Sea3SwordMasteryReady", allReady)
-	setStatus("Sea3MissingSwordMastery", #missing > 0 and table.concat(missing, ", ") or nil)
+	setStatus("Sea3RequiredSwordsReady", allReady)
+	setStatus("Sea3MissingRequiredSwords", #missing > 0 and table.concat(missing, ", ") or nil)
 
 	return allReady
 end
@@ -3254,24 +3253,20 @@ function Config.Sea3Gate.IsReady(level)
 	level = tonumber(level) or getLevel()
 
 	local levelReady = level >= Config.Sea3RequiredLevel
-	local gems = Config.Sea3Gate.GetGems()
-	local gemsReady = gems >= Config.Sea3RequiredGems
-	local masteryReady = Config.Sea3Gate.CheckSwordMastery()
-	local ready = levelReady and gemsReady and masteryReady
+	local requiredSwordsReady = Config.Sea3Gate.CheckRequiredSwords()
+	local ready = levelReady and requiredSwordsReady
 	local blockReason = "ready"
 
 	if not levelReady then
 		blockReason = "level"
-	elseif not masteryReady then
-		blockReason = "sword_mastery"
-	elseif not gemsReady then
-		blockReason = "gems"
+	elseif not requiredSwordsReady then
+		blockReason = "required_swords"
 	end
 
 	setStatus("Sea3GateLevel", level)
 	setStatus("Sea3RequiredLevel", Config.Sea3RequiredLevel)
 	setStatus("Sea3GateLevelReady", levelReady)
-	setStatus("Sea3GemsReady", gemsReady)
+	setStatus("Sea3RequiredSwordsReady", requiredSwordsReady)
 	setStatus("Sea3GateReady", ready)
 	setStatus("Sea3GateBlockReason", blockReason)
 
@@ -3550,8 +3545,20 @@ local function attackTarget(target)
 	return true
 end
 
+function Config.DragonIsland.IsPostMaxActive(level)
+	level = tonumber(level) or getLevel()
+
+	return Config.DragonIslandLock.PostMaxEnabled
+		and game.PlaceId == 14979402479
+		and level >= Config.DragonIslandLock.PostMaxLevel
+end
+
 function Config.DragonIsland.IsActive(level)
 	level = tonumber(level) or getLevel()
+
+	if Config.DragonIsland.IsPostMaxActive(level) then
+		return true
+	end
 
 	return Config.DragonIslandLock.Enabled
 		and level >= Config.DragonIslandLock.StartLevel
@@ -3564,9 +3571,14 @@ end
 function Config.DragonIsland.CanHandleBossPriority(level)
 	level = tonumber(level) or getLevel()
 
-	return Config.DragonIslandLock.Enabled
-		and game.PlaceId == 14979402479
-		and level >= Config.DragonIslandLock.StartLevel
+	return game.PlaceId == 14979402479
+		and (
+			Config.DragonIsland.IsPostMaxActive(level)
+			or (
+				Config.DragonIslandLock.Enabled
+				and level >= Config.DragonIslandLock.StartLevel
+			)
+		)
 end
 
 function Config.DragonIsland.MatchesConfiguredName(value, targetName)
@@ -4998,6 +5010,13 @@ local function shouldRunSea3Unlock(level)
 		return false
 	end
 
+	if Config.DragonIsland.IsPostMaxActive(level) then
+		setStatus("Sea3UnlockEnabled", false)
+		setStatus("Sea3GateBlockReason", "world2_post_max_farm")
+
+		return false
+	end
+
 	if getSeaIndex() >= 3 then
 		return true
 	end
@@ -5357,19 +5376,22 @@ assert(type(Config.DragonIsland.FindTargetForObjective) == "function", "dragon i
 assert(type(Config.DragonIsland.HandleAwakenBoss) == "function", "dragon boss handler missing")
 assert(type(Config.DragonIsland.HandleSuperBoss) == "function", "dragon island super boss handler missing")
 assert(type(Config.DragonIsland.CanHandleBossPriority) == "function", "dragon island boss priority gate missing")
+assert(type(Config.DragonIsland.IsPostMaxActive) == "function", "dragon island post max helper missing")
 assert(type(equipInventoryItem) == "function", "inventory equip helper missing")
 assert(type(clearHoverGyro) == "function", "world 2 hover gyro cleanup missing")
 assert(Config.PreferTool == "Shusui", "world 2 shusui preference missing")
 assert(Config.SwordMasterySwitch.TargetMastery == 310, "world 2 sword mastery switch target missing")
 assert(Config.SwordMasterySwitch.BaseSword == "Shusui" and Config.SwordMasterySwitch.SecondarySword == "Enma" and Config.SwordMasterySwitch.FinalSword == "Zenith", "world 2 sword mastery switch order missing")
 assert(type(Config.SwordSelector.SelectTool) == "function", "world 2 sword selector missing")
-assert(Config.Sea3RequiredLevel == 4500 and type(Config.Sea3RequiredGems) == "number" and Config.Sea3RequiredGems > 0 and type(Config.Sea3RequiredSwordMastery) == "number" and Config.Sea3RequiredSwordMastery > 0, "world 2 sea3 gate config missing")
-assert(Config.Sea3RequiredSwords[1] == "Shusui" and Config.Sea3RequiredSwords[2] == "Enma" and Config.Sea3RequiredSwords[3] == "Zenith", "world 2 sea3 mastery swords missing")
+assert(Config.Sea3RequiredLevel == 4200 and Config.Sea3RequiredSwords[1] == "Enma" and Config.Sea3RequiredSwords[2] == "Zenith", "world 2 sea3 gate config missing")
+assert(type(Config.Sea3Gate.CheckRequiredSwords) == "function", "world 2 sea3 sword ownership helper missing")
 assert(type(Config.Sea3Gate.IsReady) == "function", "world 2 sea3 gate helper missing")
 assert(Config.EnmaBossPriority.BossName == "Enma Boss" and Config.EnmaBossPriority.SwordName == "Enma", "enma boss priority config missing")
 assert(Config.ZenithBossPriority.BossName == "Zenith Boss" and Config.ZenithBossPriority.SwordName == "Zenith", "zenith boss priority config missing")
 assert(Config.PriorityBosses[1] == Config.EnmaBossPriority and Config.PriorityBosses[2] == Config.ZenithBossPriority, "priority boss order missing")
 assert(Config.DragonIslandLock.StartLevel == 3050 and Config.DragonIslandLock.EndLevel == 4500, "dragon island level lock missing")
+assert(Config.DragonIslandLock.Enabled == false, "dragon island lock disabled missing")
+assert(Config.DragonIslandLock.PostMaxEnabled == true and Config.DragonIslandLock.PostMaxLevel == 4750, "dragon island post max lock missing")
 assert(Config.DragonIslandLock.AwakenBossName == "Dragon Boss" and Config.DragonIslandLock.AwakenSoulTarget == 999, "dragon awaken boss config missing")
 assert(Config.DragonIslandLock.QuestNames[1] == "Elite Beast" and Config.DragonIslandLock.QuestNames[2] == "Beast Pirate", "dragon island quest targets missing")
 assert(Config.DragonIslandLock.SuperBossPriority == true and #Config.DragonIslandLock.SuperBossNames >= 10, "dragon island super boss priority config missing")
@@ -5412,6 +5434,9 @@ task.spawn(function()
 			setStatus("ActiveQuestName", questState.QuestName)
 			setStatus("ActiveProgress", questState.Progress)
 			setStatus("ActiveTarget", questState.Target)
+			local world2PostMax = Config.DragonIsland.IsPostMaxActive(level)
+			setStatus("World2Mode", world2PostMax and "post_max_4750" or "level_farm_2200_4200")
+			setStatus("World2PostMaxActive", world2PostMax)
 			ensureAutoHaki(CurrentTarget)
 
 			if PriorityBoss.Handle() then
@@ -5419,17 +5444,17 @@ task.spawn(function()
 				continue
 			end
 
-			if Config.DragonIsland.HandleAwakenBoss(level) then
-				task.wait(Config.LoopDelay)
-				continue
-			end
+			if world2PostMax then
+				if Config.DragonIsland.HandleAwakenBoss(level) then
+					task.wait(Config.LoopDelay)
+					continue
+				end
 
-			if Config.DragonIsland.HandleSuperBoss(level) then
-				task.wait(Config.LoopDelay)
-				continue
-			end
-
-			if runSea3UnlockFlow(level) then
+				if Config.DragonIsland.HandleSuperBoss(level) then
+					task.wait(Config.LoopDelay)
+					continue
+				end
+			elseif runSea3UnlockFlow(level) then
 				task.wait(Config.LoopDelay)
 				continue
 			end
