@@ -160,6 +160,19 @@ local Array = {
 				"Santoryu",
 			},
 		},
+		World3AutoFarm = {
+			Enabled = true,
+			MaxLevel = 4750,
+			RequiredMastery = 300,
+			CheckDelay = 1,
+			Swords = {
+				"Shusui",
+				"Enma",
+				"Zenith",
+			},
+			FallbackTool = "Shusui",
+			RequireSwordTool = true,
+		},
 		SwordName = "Combat",
 		SearchPlayDelay = 0.5,
 		SearchPlayTimeout = 60,
@@ -313,21 +326,25 @@ local Array = {
 			"MouseButton1Up",
 		},
 		Codes = {
+			"1HEXP",
+			"300KMEMBERS",
+			"THANKS4PLAYING",
+			"STATREFUND",
 			"DRAGONUPD",
 			"OKUCHI",
 			"Sub2XenoTy",
 			"Sub2CaptainMaui",
-			"PATCH",
-			"FREECASH",
 			"RELEASE",
+			"FREECASH",
 			"FREEGEMS",
+			"PATCH",
+			"HAZESEAS2026",
 			"SUBSCRIBETOHAZEYT",
 			"Sub2Nikkolapz",
-			"Sub2BrosSiam",
 			"Sub2BadiTubes",
+			"Sub2BrosSiam",
 			"Sub2BuilderboyTV",
-			"HAZESEAS2026",
-			"GROUPONLY",
+			"ELECAWAKENING",
 		},
 		RefundCodeNames = {
 			statrefund = true,
@@ -724,9 +741,11 @@ Config.ForceFarmLevel = tonumber(Config.ForceFarmLevel) or 2850
 Config.ForceFarmStartTravel = Config.ForceFarmStartTravel ~= false
 Config.ForceFarmStartDelay = math.max(tonumber(Config.ForceFarmStartDelay) or 0.5, 0)
 Config.DragonIslandLock = type(Config.DragonIslandLock) == "table" and Config.DragonIslandLock or {}
-Config.DragonIslandLock.Enabled = Config.DragonIslandLock.Enabled ~= false
+Config.DragonIslandLock.Enabled = false
 Config.DragonIslandLock.StartLevel = tonumber(Config.DragonIslandLock.StartLevel) or 3050
 Config.DragonIslandLock.EndLevel = tonumber(Config.DragonIslandLock.EndLevel) or 4500
+Config.DragonIslandLock.PostMaxEnabled = Config.DragonIslandLock.PostMaxEnabled ~= false
+Config.DragonIslandLock.PostMaxLevel = math.max(1, math.floor(tonumber(Config.DragonIslandLock.PostMaxLevel) or 4750))
 Config.DragonIslandLock.SplitStartLevel = tonumber(Config.DragonIslandLock.SplitStartLevel) or 3200
 Config.DragonIslandLock.IslandName = tostring(Config.DragonIslandLock.IslandName or "Dragon Island")
 Config.DragonIslandLock.AwakenBossName = tostring(Config.DragonIslandLock.AwakenBossName or "Dragon Boss")
@@ -768,13 +787,13 @@ Config.DragonIslandLock.SuperBossNames[12] = "Sea Monster"
 Config.DragonIslandLock.SuperBossNames[13] = "Dough Boss"
 Config.DragonIslandLock.SuperBossNames[14] = "Favela Shanks' Mother"
 Config.Sea3Unlock = Config.Sea3Unlock ~= false
-Config.Sea3RequiredLevel = 4500
-Config.Sea3RequiredGems = 2000
-Config.Sea3RequiredSwordMastery = 300
+Config.Sea3RequiredLevel = 4200
+Config.Sea3RequiredGems = 0
+Config.Sea3RequiredSwordMastery = 0
 Config.Sea3RequiredSwords = type(Config.Sea3RequiredSwords) == "table" and Config.Sea3RequiredSwords or {}
-Config.Sea3RequiredSwords[1] = "Shusui"
-Config.Sea3RequiredSwords[2] = "Enma"
-Config.Sea3RequiredSwords[3] = "Zenith"
+Config.Sea3RequiredSwords[1] = "Enma"
+Config.Sea3RequiredSwords[2] = "Zenith"
+Config.Sea3RequiredSwords[3] = nil
 Config.Sea3Gate = type(Config.Sea3Gate) == "table" and Config.Sea3Gate or {}
 Config.Sea3InteractDelay = math.max(1, tonumber(Config.Sea3InteractDelay) or 3)
 Config.Sea3AcceptTimeout = math.max(1, tonumber(Config.Sea3AcceptTimeout) or 8)
@@ -3684,27 +3703,24 @@ function Config.Sea3Gate.GetGems()
 	return gems
 end
 
-function Config.Sea3Gate.CheckSwordMastery()
+function Config.Sea3Gate.CheckRequiredSwords()
 	local allReady = true
 	local missing = {}
 
-	setStatus("Sea3RequiredSwordMastery", Config.Sea3RequiredSwordMastery)
-
 	for _, swordName in next, Config.Sea3RequiredSwords do
-		local mastery = Config.SwordSelector.GetMastery(swordName)
-		local ready = mastery >= Config.Sea3RequiredSwordMastery
+		local owned = Config.SwordSelector.HasSword(swordName)
 		local statusName = Config.SwordSelector.GetStatusName(swordName)
 
-		setStatus("Sea3" .. statusName .. "MasteryReady", ready)
+		setStatus("Sea3" .. statusName .. "Owned", owned)
 
-		if not ready then
+		if not owned then
 			allReady = false
-			table.insert(missing, swordName .. ":" .. tostring(mastery) .. "/" .. tostring(Config.Sea3RequiredSwordMastery))
+			table.insert(missing, swordName)
 		end
 	end
 
-	setStatus("Sea3SwordMasteryReady", allReady)
-	setStatus("Sea3MissingSwordMastery", #missing > 0 and table.concat(missing, ", ") or nil)
+	setStatus("Sea3RequiredSwordsReady", allReady)
+	setStatus("Sea3MissingRequiredSwords", #missing > 0 and table.concat(missing, ", ") or nil)
 
 	return allReady
 end
@@ -3713,24 +3729,20 @@ function Config.Sea3Gate.IsReady(level)
 	level = tonumber(level) or getLevel()
 
 	local levelReady = level >= Config.Sea3RequiredLevel
-	local gems = Config.Sea3Gate.GetGems()
-	local gemsReady = gems >= Config.Sea3RequiredGems
-	local masteryReady = Config.Sea3Gate.CheckSwordMastery()
-	local ready = levelReady and gemsReady and masteryReady
+	local requiredSwordsReady = Config.Sea3Gate.CheckRequiredSwords()
+	local ready = levelReady and requiredSwordsReady
 	local blockReason = "ready"
 
 	if not levelReady then
 		blockReason = "level"
-	elseif not masteryReady then
-		blockReason = "sword_mastery"
-	elseif not gemsReady then
-		blockReason = "gems"
+	elseif not requiredSwordsReady then
+		blockReason = "required_swords"
 	end
 
 	setStatus("Sea3GateLevel", level)
 	setStatus("Sea3RequiredLevel", Config.Sea3RequiredLevel)
 	setStatus("Sea3GateLevelReady", levelReady)
-	setStatus("Sea3GemsReady", gemsReady)
+	setStatus("Sea3RequiredSwordsReady", requiredSwordsReady)
 	setStatus("Sea3GateReady", ready)
 	setStatus("Sea3GateBlockReason", blockReason)
 
@@ -4009,8 +4021,20 @@ local function attackTarget(target)
 	return true
 end
 
+function Config.DragonIsland.IsPostMaxActive(level)
+	level = tonumber(level) or getLevel()
+
+	return Config.DragonIslandLock.PostMaxEnabled
+		and game.PlaceId == 14979402479
+		and level >= Config.DragonIslandLock.PostMaxLevel
+end
+
 function Config.DragonIsland.IsActive(level)
 	level = tonumber(level) or getLevel()
+
+	if Config.DragonIsland.IsPostMaxActive(level) then
+		return true
+	end
 
 	return Config.DragonIslandLock.Enabled
 		and level >= Config.DragonIslandLock.StartLevel
@@ -4023,9 +4047,14 @@ end
 function Config.DragonIsland.CanHandleBossPriority(level)
 	level = tonumber(level) or getLevel()
 
-	return Config.DragonIslandLock.Enabled
-		and game.PlaceId == 14979402479
-		and level >= Config.DragonIslandLock.StartLevel
+	return game.PlaceId == 14979402479
+		and (
+			Config.DragonIsland.IsPostMaxActive(level)
+			or (
+				Config.DragonIslandLock.Enabled
+				and level >= Config.DragonIslandLock.StartLevel
+			)
+		)
 end
 
 function Config.DragonIsland.MatchesConfiguredName(value, targetName)
@@ -5457,6 +5486,13 @@ local function shouldRunSea3Unlock(level)
 		return false
 	end
 
+	if Config.DragonIsland.IsPostMaxActive(level) then
+		setStatus("Sea3UnlockEnabled", false)
+		setStatus("Sea3GateBlockReason", "world2_post_max_farm")
+
+		return false
+	end
+
 	if getSeaIndex() >= 3 then
 		return true
 	end
@@ -5816,19 +5852,22 @@ assert(type(Config.DragonIsland.FindTargetForObjective) == "function", "dragon i
 assert(type(Config.DragonIsland.HandleAwakenBoss) == "function", "dragon boss handler missing")
 assert(type(Config.DragonIsland.HandleSuperBoss) == "function", "dragon island super boss handler missing")
 assert(type(Config.DragonIsland.CanHandleBossPriority) == "function", "dragon island boss priority gate missing")
+assert(type(Config.DragonIsland.IsPostMaxActive) == "function", "dragon island post max helper missing")
 assert(type(equipInventoryItem) == "function", "inventory equip helper missing")
 assert(type(clearHoverGyro) == "function", "world 2 hover gyro cleanup missing")
 assert(Config.PreferTool == "Shusui", "world 2 shusui preference missing")
 assert(Config.SwordMasterySwitch.TargetMastery == 310, "world 2 sword mastery switch target missing")
 assert(Config.SwordMasterySwitch.BaseSword == "Shusui" and Config.SwordMasterySwitch.SecondarySword == "Enma" and Config.SwordMasterySwitch.FinalSword == "Zenith", "world 2 sword mastery switch order missing")
 assert(type(Config.SwordSelector.SelectTool) == "function", "world 2 sword selector missing")
-assert(Config.Sea3RequiredLevel == 4500 and type(Config.Sea3RequiredGems) == "number" and Config.Sea3RequiredGems > 0 and type(Config.Sea3RequiredSwordMastery) == "number" and Config.Sea3RequiredSwordMastery > 0, "world 2 sea3 gate config missing")
-assert(Config.Sea3RequiredSwords[1] == "Shusui" and Config.Sea3RequiredSwords[2] == "Enma" and Config.Sea3RequiredSwords[3] == "Zenith", "world 2 sea3 mastery swords missing")
+assert(Config.Sea3RequiredLevel == 4200 and Config.Sea3RequiredSwords[1] == "Enma" and Config.Sea3RequiredSwords[2] == "Zenith", "world 2 sea3 gate config missing")
+assert(type(Config.Sea3Gate.CheckRequiredSwords) == "function", "world 2 sea3 sword helper missing")
 assert(type(Config.Sea3Gate.IsReady) == "function", "world 2 sea3 gate helper missing")
 assert(Config.EnmaBossPriority.BossName == "Enma Boss" and Config.EnmaBossPriority.SwordName == "Enma", "enma boss priority config missing")
 assert(Config.ZenithBossPriority.BossName == "Zenith Boss" and Config.ZenithBossPriority.SwordName == "Zenith", "zenith boss priority config missing")
 assert(Config.PriorityBosses[1] == Config.EnmaBossPriority and Config.PriorityBosses[2] == Config.ZenithBossPriority, "priority boss order missing")
 assert(Config.DragonIslandLock.StartLevel == 3050 and Config.DragonIslandLock.EndLevel == 4500, "dragon island level lock missing")
+assert(Config.DragonIslandLock.Enabled == false, "dragon island lock disabled missing")
+assert(Config.DragonIslandLock.PostMaxEnabled == true and Config.DragonIslandLock.PostMaxLevel == 4750, "dragon island post max lock missing")
 assert(Config.DragonIslandLock.AwakenBossName == "Dragon Boss" and Config.DragonIslandLock.AwakenSoulTarget == 999, "dragon awaken boss config missing")
 assert(Config.DragonIslandLock.QuestNames[1] == "Elite Beast" and Config.DragonIslandLock.QuestNames[2] == "Beast Pirate", "dragon island quest targets missing")
 assert(Config.DragonIslandLock.SuperBossPriority == true and #Config.DragonIslandLock.SuperBossNames >= 10, "dragon island super boss priority config missing")
@@ -5871,6 +5910,9 @@ task.spawn(function()
 			setStatus("ActiveQuestName", questState.QuestName)
 			setStatus("ActiveProgress", questState.Progress)
 			setStatus("ActiveTarget", questState.Target)
+			local world2PostMax = Config.DragonIsland.IsPostMaxActive(level)
+			setStatus("World2Mode", world2PostMax and "post_max_4750" or "level_farm_2200_4200")
+			setStatus("World2PostMaxActive", world2PostMax)
 			ensureAutoHaki(CurrentTarget)
 
 			if PriorityBoss.Handle() then
@@ -5878,17 +5920,17 @@ task.spawn(function()
 				continue
 			end
 
-			if Config.DragonIsland.HandleAwakenBoss(level) then
-				task.wait(Config.LoopDelay)
-				continue
-			end
+			if world2PostMax then
+				if Config.DragonIsland.HandleAwakenBoss(level) then
+					task.wait(Config.LoopDelay)
+					continue
+				end
 
-			if Config.DragonIsland.HandleSuperBoss(level) then
-				task.wait(Config.LoopDelay)
-				continue
-			end
-
-			if runSea3UnlockFlow(level) then
+				if Config.DragonIsland.HandleSuperBoss(level) then
+					task.wait(Config.LoopDelay)
+					continue
+				end
+			elseif runSea3UnlockFlow(level) then
 				task.wait(Config.LoopDelay)
 				continue
 			end
@@ -6431,6 +6473,19 @@ Array.Config.World3Shrine.RewardNames = type(Array.Config.World3Shrine.RewardNam
 		"Three Sword Style",
 		"Santoryu",
 	}
+Array.Config.World3AutoFarm = type(Array.Config.World3AutoFarm) == "table" and Array.Config.World3AutoFarm or {}
+Array.Config.World3AutoFarm.Enabled = Array.Config.World3AutoFarm.Enabled ~= false
+Array.Config.World3AutoFarm.MaxLevel = math.max(math.floor(tonumber(Array.Config.World3AutoFarm.MaxLevel) or 4750), 0)
+Array.Config.World3AutoFarm.RequiredMastery = math.max(math.floor(tonumber(Array.Config.World3AutoFarm.RequiredMastery) or 300), 0)
+Array.Config.World3AutoFarm.CheckDelay = math.max(tonumber(Array.Config.World3AutoFarm.CheckDelay) or 1, 0.25)
+Array.Config.World3AutoFarm.Swords = type(Array.Config.World3AutoFarm.Swords) == "table"
+	and Array.Config.World3AutoFarm.Swords
+	or {}
+Array.Config.World3AutoFarm.Swords[1] = "Shusui"
+Array.Config.World3AutoFarm.Swords[2] = "Enma"
+Array.Config.World3AutoFarm.Swords[3] = "Zenith"
+Array.Config.World3AutoFarm.FallbackTool = tostring(Array.Config.World3AutoFarm.FallbackTool or "Shusui")
+Array.Config.World3AutoFarm.RequireSwordTool = Array.Config.World3AutoFarm.RequireSwordTool ~= false
 Array.Config.RefundCodeNames = type(Array.Config.RefundCodeNames) == "table" and Array.Config.RefundCodeNames or {}
 Array.Config.RefundCodeNames.statrefund = true
 Array.Config.SwordName = "Combat"
@@ -6725,6 +6780,18 @@ for Key, Value in next, {
 	["Venom Monster"] = "Venom Island",
 	["Venom Poacher"] = "Venom Island",
 	["Venom Boss"] = "Venom Island",
+	["Celestial Guard"] = "Land Of Gods",
+	["Celestial Captain"] = "Land Of Gods",
+	["Barren Rebel"] = "Land Of Gods",
+	["Enslaved Pirate"] = "Land Of Gods",
+	["God's Knight"] = "Rainbow Sky Island",
+	["Leopard Boss"] = "Rainbow Sky Island",
+	["Thunder Disciple"] = "Rainbow Sky Island",
+	["Thunder Soldier"] = "Rainbow Sky Island",
+	["Raigo Priest"] = "Rainbow Sky Island",
+	["Authority Agent"] = "Egg Island",
+	["Execution Unit"] = "Egg Island",
+	["Control Sentinel"] = "Egg Island",
 } do
 	if Array.Config.AutoFarm.QuestIslandNames[Key] == nil then
 		Array.Config.AutoFarm.QuestIslandNames[Key] = Value
@@ -6744,6 +6811,9 @@ Array.Config.AutoFarm.QuestIslandLevelRanges = type(Array.Config.AutoFarm.QuestI
 	{ Min = 3750, Max = 3850, Island = "Winter Island" },
 	{ Min = 3900, Max = 4000, Island = "Snake Amazon" },
 	{ Min = 4050, Max = 4150, Island = "Venom Island" },
+	{ Min = 4200, Max = 4350, Island = "Land Of Gods" },
+	{ Min = 4400, Max = 4600, Island = "Rainbow Sky Island" },
+	{ Min = 4650, Max = 4750, Island = "Egg Island" },
 }
 Array.Config.StatusPrint = Array.Config.StatusPrint ~= false
 Array.Config.PlayBlockWords = type(Array.Config.PlayBlockWords) == "table" and Array.Config.PlayBlockWords or {
@@ -7000,8 +7070,16 @@ function Array.Function.NormalizeWorld2AutoFarmSource(Source)
 		return Source
 	end
 
+	local StrictDragonIslandLockEnabled = 'Config.DragonIslandLock.Enabled = Config.DragonIslandLock.Enabled ~= false'
+	local DragonIslandLockEnabledIndex, DragonIslandLockEnabledEnd = string.find(Source, StrictDragonIslandLockEnabled, 1, true)
+	if DragonIslandLockEnabledIndex then
+		Source = string.sub(Source, 1, DragonIslandLockEnabledIndex - 1)
+			.. 'Config.DragonIslandLock.Enabled = false'
+			.. string.sub(Source, DragonIslandLockEnabledEnd + 1)
+	end
+
 	local StrictSea3GateAssert = 'assert(Config.Sea3RequiredLevel == 4500 and Config.Sea3RequiredGems == 1000 and Config.Sea3RequiredSwordMastery == 310, "world 2 sea3 gate config missing")'
-	local FlexibleSea3GateAssert = 'assert(Config.Sea3RequiredLevel == 4500 and type(Config.Sea3RequiredGems) == "number" and Config.Sea3RequiredGems > 0 and type(Config.Sea3RequiredSwordMastery) == "number" and Config.Sea3RequiredSwordMastery > 0, "world 2 sea3 gate config missing")'
+	local FlexibleSea3GateAssert = 'assert(Config.Sea3RequiredLevel == 4200 and Config.Sea3RequiredSwords[1] == "Enma" and Config.Sea3RequiredSwords[2] == "Zenith", "world 2 sea3 gate config missing")'
 	local StartIndex, EndIndex = string.find(Source, StrictSea3GateAssert, 1, true)
 
 	if not StartIndex then
@@ -7340,11 +7418,82 @@ function Array.Function.HasWorld3ShrineReward()
 	return Array.State.World3RewardData ~= nil
 end
 
+function Array.Function.EquipWorld3ShrineReward()
+	for _, RewardName in next, Array.Config.World3Shrine.RewardNames do
+		if Array.Function.HasOwnedFightingStyle(RewardName) then
+			Array.Function.SetStatus("World3ShrineReturnStyle", RewardName)
+
+			if Array.Function.NormalizeLookupName(Array.Function.GetCurrentFightingStyleName())
+				~= Array.Function.NormalizeLookupName(RewardName)
+			then
+				Array.State.World3ShrineStyleChangeSuccess = Array.Function.InvokeChangeFightingStyle(
+					RewardName,
+					"world3_shrine_return"
+				)
+				task.wait(0.35)
+			end
+
+			if Array.Function.WaitForFightingStyle(RewardName, Array.Config.World3Shrine.AcceptTimeout) then
+				Array.Function.SetStatus("World3ShrineReturnStyleEquipped", RewardName)
+				return true
+			end
+		end
+
+		if Array.Function.HasOwnedSword(RewardName) or Array.Function.FindToolByName(RewardName) then
+			Array.Function.SetStatus("World3ShrineReturnTool", RewardName)
+			Array.State.World3ShrineReturnTool = Array.Function.EquipInventoryItem(RewardName)
+
+			if Array.State.World3ShrineReturnTool then
+				Array.Function.SetStatus("World3ShrineReturnToolEquipped", RewardName)
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
+function Array.Function.GetWorld3MaxLevel()
+	Array.State.World3MaxLevel = Array.Config.World3AutoFarm.MaxLevel
+
+	for _, QuestRange in next, Array.Config.AutoFarm.QuestIslandLevelRanges do
+		Array.State.World3QuestRangeMaxLevel = tonumber(QuestRange and QuestRange.Max) or 0
+
+		if Array.State.World3QuestRangeMaxLevel > Array.State.World3MaxLevel then
+			Array.State.World3MaxLevel = Array.State.World3QuestRangeMaxLevel
+		end
+	end
+
+	Array.Function.SetStatus("World3AutoFarmMaxLevel", Array.State.World3MaxLevel)
+
+	return Array.State.World3MaxLevel
+end
+
 function Array.Function.CheckWorld3ShrineRequirements()
 	Array.State.World3ShrineMissing = {}
+	Array.State.World3ShrineRequiredLevel = Array.Function.GetWorld3MaxLevel()
+	Array.State.World3ShrinePlayerLevel = Array.Function.GetPlayerLevel()
 	Array.State.World3ShrineRequiredMastery = Array.Config.World3Shrine.RequiredMastery
 
+	Array.Function.SetStatus("World3ShrineRequiredLevel", Array.State.World3ShrineRequiredLevel)
+	Array.Function.SetStatus("World3ShrineLevel", Array.State.World3ShrinePlayerLevel)
 	Array.Function.SetStatus("World3ShrineRequiredMastery", Array.State.World3ShrineRequiredMastery)
+
+	if Array.State.World3ShrinePlayerLevel < Array.State.World3ShrineRequiredLevel then
+		table.insert(
+			Array.State.World3ShrineMissing,
+			"level:" .. tostring(Array.State.World3ShrinePlayerLevel) .. "/" .. tostring(Array.State.World3ShrineRequiredLevel)
+		)
+
+		Array.State.World3ShrineReady = false
+		Array.Function.SetStatus("World3ShrineLevelReady", false)
+		Array.Function.SetStatus("World3ShrineRequirementsReady", false)
+		Array.Function.SetStatus("World3ShrineMissingRequirements", table.concat(Array.State.World3ShrineMissing, ", "))
+
+		return false
+	end
+
+	Array.Function.SetStatus("World3ShrineLevelReady", true)
 
 	for _, SwordName in next, Array.Config.World3Shrine.RequiredSwords do
 		Array.State.World3ShrineSwordName = tostring(SwordName)
@@ -7885,6 +8034,36 @@ function Array.Function.TryWorld3ShrineInteraction()
 	return Array.State.World3ShrineTriggered
 end
 
+function Array.Function.ReturnToWorld2FromWorld3()
+	if game.PlaceId ~= Array.Config.PlaceId.World3 then
+		return false
+	end
+
+	if Array.State.World3ReturningToWorld2 then
+		return true
+	end
+
+	Array.State.World3ReturningToWorld2 = true
+	Array.Function.SetStatus("World3ShrineState", "returning_world2")
+	Array.Function.SetStatus("World3Return", "queueing")
+	Array.State.World3ReturnQueued = Array.Function.QueueTargetRunner()
+	Array.Function.SetStatus("World3ReturnQueued", Array.State.World3ReturnQueued)
+	Array.State.World3ReturnSuccess, Array.State.World3ReturnResult = pcall(function()
+		return Array.Service.TeleportService:Teleport(Array.Config.PlaceId.World2, Array.Service.Player)
+	end)
+	Array.Function.SetStatus("World3Return", Array.State.World3ReturnSuccess and "teleporting" or "failed")
+	Array.Function.SetStatus("World3ReturnResult", tostring(Array.State.World3ReturnResult))
+
+	if Array.State.World3ReturnSuccess then
+		Array.Function.SetAutoFarmStatus("State", "returning_world2")
+		Array.Config.Enabled = false
+	else
+		Array.State.World3ReturningToWorld2 = false
+	end
+
+	return Array.State.World3ReturnSuccess
+end
+
 function Array.Function.StartWorld3ShrineLoop()
 	if Array.State.World3ShrineStarted or not Array.Config.World3Shrine.Enabled then
 		return false
@@ -7904,23 +8083,41 @@ function Array.Function.StartWorld3ShrineLoop()
 			and game.PlaceId == Array.Config.PlaceId.World3
 			and Array.Config.World3Shrine.Enabled
 		do
-			if Array.Function.HasWorld3ShrineReward() then
-				Array.Function.SetStatus("World3ShrineState", "reward_owned")
-				break
+			local shrineRequirementsReady = Array.Function.CheckWorld3ShrineRequirements()
+			local shrineRewardOwned = Array.Function.HasWorld3ShrineReward()
+
+			if not shrineRequirementsReady then
+				Array.Function.SetStatus(
+					"World3ShrineState",
+					shrineRewardOwned and "training_mastery" or "waiting_requirements"
+				)
+				task.wait(Array.Config.World3Shrine.CheckDelay)
+				continue
 			end
 
-			if not Array.Function.CheckWorld3ShrineRequirements() then
-				Array.Function.SetStatus("World3ShrineState", "waiting_requirements")
-				task.wait(Array.Config.World3Shrine.CheckDelay)
+			if shrineRewardOwned then
+				Array.Function.SetStatus("World3ShrineState", "reward_owned")
+
+				if Array.Function.EquipWorld3ShrineReward() and Array.Function.ReturnToWorld2FromWorld3() then
+					break
+				end
+
+				task.wait(Array.Config.World3Shrine.RetryDelay)
 				continue
 			end
 
 			Array.Function.SetStatus("World3ShrineState", "interacting")
 			Array.Function.TryWorld3ShrineInteraction()
 
-			if Array.Function.HasWorld3ShrineReward() then
+			if Array.Function.CheckWorld3ShrineRequirements() and Array.Function.HasWorld3ShrineReward() then
 				Array.Function.SetStatus("World3ShrineState", "reward_owned")
-				break
+
+				if Array.Function.EquipWorld3ShrineReward() and Array.Function.ReturnToWorld2FromWorld3() then
+					break
+				end
+
+				task.wait(Array.Config.World3Shrine.RetryDelay)
+				continue
 			end
 
 			task.wait(Array.Config.World3Shrine.RetryDelay)
@@ -7946,6 +8143,7 @@ function Array.Function.StartWorld3Script()
 	Array.Function.WaitWorldReady(Array.Config.WorldReadyTimeout)
 	Array.Function.RedeemCodes()
 	Array.Function.StartWorld3ShrineLoop()
+	Array.Function.StartWorld3AutoFarm()
 
 	return true
 end
@@ -8243,6 +8441,87 @@ function Array.Function.GetSwordMastery(Name)
 	)
 
 	return Array.State.TargetSwordMasteryLevel
+end
+
+function Array.Function.GetWorld3TrainingSword()
+	if game.PlaceId ~= Array.Config.PlaceId.World3 or not Array.Config.World3AutoFarm.Enabled then
+		Array.State.World3TrainingSwordCached = nil
+		return nil
+	end
+
+	if Array.State.World3TrainingCheckedAt
+		and os.clock() - Array.State.World3TrainingCheckedAt < Array.Config.World3AutoFarm.CheckDelay
+	then
+		return Array.State.World3TrainingSwordCached
+	end
+
+	Array.State.World3TrainingCheckedAt = os.clock()
+	Array.State.World3TrainingTargetMastery = Array.Config.World3AutoFarm.RequiredMastery
+	Array.State.World3TrainingLevel = Array.Function.GetPlayerLevel()
+	Array.State.World3TrainingMaxLevel = Array.Function.GetWorld3MaxLevel()
+	Array.State.World3TrainingMissing = {}
+	Array.State.World3TrainingOwnedAny = false
+	Array.Function.SetStatus("World3AutoFarmMasteryTarget", Array.State.World3TrainingTargetMastery)
+	Array.Function.SetStatus("World3AutoFarmLevel", Array.State.World3TrainingLevel)
+	Array.Function.SetStatus("World3AutoFarmMaxLevel", Array.State.World3TrainingMaxLevel)
+
+	if Array.State.World3TrainingLevel < Array.State.World3TrainingMaxLevel then
+		Array.Function.SetStatus("World3AutoFarmMissingMastery", nil)
+		Array.Function.SetStatus("World3AutoFarmMasteryReady", false)
+		Array.Function.SetStatus("World3AutoFarmSelectedSword", Array.Config.World3AutoFarm.FallbackTool)
+		Array.Function.SetStatus("World3AutoFarmSelectedReason", "level_below_max")
+		Array.Function.SetStatus("World3AutoFarmLevelReady", false)
+		Array.State.World3TrainingSwordCached = Array.Config.World3AutoFarm.FallbackTool
+
+		return Array.State.World3TrainingSwordCached
+	end
+
+	Array.Function.SetStatus("World3AutoFarmLevelReady", true)
+
+	for _, SwordName in next, Array.Config.World3AutoFarm.Swords do
+		Array.State.World3TrainingSwordName = tostring(SwordName)
+		Array.State.World3TrainingStatusName = Array.Function.GetSwordMasteryStatusName(Array.State.World3TrainingSwordName)
+		Array.State.World3TrainingSwordOwned = Array.Function.HasOwnedSword(Array.State.World3TrainingSwordName)
+		Array.State.World3TrainingSwordMastery = Array.Function.GetSwordMastery(Array.State.World3TrainingSwordName)
+		Array.Function.SetStatus("World3AutoFarmOwned" .. Array.State.World3TrainingStatusName, Array.State.World3TrainingSwordOwned)
+		Array.Function.SetStatus("World3AutoFarmMastery" .. Array.State.World3TrainingStatusName, Array.State.World3TrainingSwordMastery)
+
+		if Array.State.World3TrainingSwordOwned then
+			Array.State.World3TrainingOwnedAny = true
+
+			if Array.State.World3TrainingSwordMastery < Array.State.World3TrainingTargetMastery then
+				table.insert(
+					Array.State.World3TrainingMissing,
+					Array.State.World3TrainingSwordName
+						.. ":"
+						.. tostring(Array.State.World3TrainingSwordMastery)
+						.. "/"
+						.. tostring(Array.State.World3TrainingTargetMastery)
+				)
+				Array.Function.SetStatus("World3AutoFarmMissingMastery", table.concat(Array.State.World3TrainingMissing, ", "))
+				Array.Function.SetStatus("World3AutoFarmMasteryReady", false)
+				Array.Function.SetStatus("World3AutoFarmSelectedSword", Array.State.World3TrainingSwordName)
+				Array.Function.SetStatus("World3AutoFarmSelectedReason", "mastery_below_target")
+				Array.State.World3TrainingSwordCached = Array.State.World3TrainingSwordName
+
+				return Array.State.World3TrainingSwordCached
+			end
+		elseif Array.Config.World3AutoFarm.RequireSwordTool then
+			table.insert(Array.State.World3TrainingMissing, Array.State.World3TrainingSwordName .. ":missing")
+		end
+	end
+
+	Array.Function.SetStatus("World3AutoFarmMissingMastery", #Array.State.World3TrainingMissing > 0 and table.concat(Array.State.World3TrainingMissing, ", ") or nil)
+	Array.Function.SetStatus("World3AutoFarmMasteryReady", #Array.State.World3TrainingMissing == 0)
+	Array.Function.SetStatus("World3AutoFarmSelectedReason", "mastery_ready")
+
+	if Array.State.World3TrainingOwnedAny then
+		Array.State.World3TrainingSwordCached = Array.Config.World3AutoFarm.FallbackTool
+		return Array.State.World3TrainingSwordCached
+	end
+
+	Array.State.World3TrainingSwordCached = nil
+	return nil
 end
 
 function Array.Function.SetSea2QuestStatus(Key, Value)
@@ -11287,6 +11566,21 @@ function Array.Function.SetAutoFarmStatus(Key, Value)
 	Array.State.AutoFarmStatus.UpdatedAt = os.clock()
 end
 
+function Array.Function.IsAutoFarmPlace()
+	return game.PlaceId == Array.Config.PlaceId.World1
+		or (game.PlaceId == Array.Config.PlaceId.World3 and Array.Config.World3AutoFarm.Enabled)
+end
+
+function Array.Function.GetAutoFarmPlaceName()
+	if game.PlaceId == Array.Config.PlaceId.World3 then
+		return "World3"
+	elseif game.PlaceId == Array.Config.PlaceId.World1 then
+		return "World1"
+	end
+
+	return "Unsupported"
+end
+
 function Array.Function.GetRoot()
 	Array.State.Character = Array.Service.Player.Character
 	Array.State.RootPart = Array.State.Character and Array.State.Character:FindFirstChild("HumanoidRootPart")
@@ -12492,14 +12786,34 @@ function Array.Function.GetPreferredFarmTool()
 		return nil
 	end
 
+	Array.State.World3TrainingSword = Array.Function.GetWorld3TrainingSword()
+
+	if Array.State.World3TrainingSword then
+		Array.Config.AutoFarm.PreferTool = Array.State.World3TrainingSword
+		Array.Config.AutoFarm.PreferMelee = true
+		Array.Function.SetAutoFarmStatus("World3TrainingSword", Array.State.World3TrainingSword)
+	end
+
 	if Array.Config.AutoFarm.PreferTool then
 		Array.State.PreferredFarmTool = Array.Function.FindFarmToolByName(Array.Config.AutoFarm.PreferTool, Array.State.Character, Array.State.Backpack)
+
+		if not Array.State.PreferredFarmTool and Array.State.World3TrainingSword then
+			Array.State.PreferredFarmTool = Array.Function.EquipInventoryItem(Array.State.World3TrainingSword)
+			Array.Function.GetCharacter()
+			Array.State.Backpack = Array.Function.WaitForBackpack()
+		end
+
 		Array.Function.SetAutoFarmStatus("LastToolCandidate", Array.State.PreferredFarmTool and Array.State.PreferredFarmTool.Name or nil)
 		Array.Function.SetAutoFarmStatus("LastToolCandidateScore", Array.State.PreferredFarmTool and Array.Function.GetToolScore(Array.State.PreferredFarmTool) or nil)
 		Array.State.EquippedPreferredFarmTool = Array.Function.EquipFarmToolWithRetry(Array.State.PreferredFarmTool, Array.State.Humanoid, Array.State.Character)
 
 		if Array.State.EquippedPreferredFarmTool then
 			return Array.State.EquippedPreferredFarmTool
+		end
+
+		if Array.State.World3TrainingSword and Array.Config.World3AutoFarm.RequireSwordTool then
+			Array.Function.SetAutoFarmStatus("LastEquipResult", "world3_sword_missing")
+			return nil
 		end
 	end
 
@@ -12788,7 +13102,7 @@ function Array.Function.KeepHoverOnTarget(Target)
 end
 
 function Array.Function.AutoFarmLevel()
-	Array.State.AutoFarmLevelKey = "__HSKaitunWorld1AutoFarmLevelRunning"
+	Array.State.AutoFarmLevelKey = "__HSKaitunAutoFarmLevelRunning"
 
 	if _G[Array.State.AutoFarmLevelKey] == Array.State.RunId or not Array.Config.AutoFarm.Enabled then
 		return
@@ -12800,9 +13114,10 @@ function Array.Function.AutoFarmLevel()
 	Array.Function.GetWorld1QuestCache(true)
 	Array.Function.WaitPlayerLevelReady(Array.Config.AutoFarm.LevelReadyTimeout)
 	Array.Function.SetAutoFarmStatus("Loaded", true)
+	Array.Function.SetAutoFarmStatus("Place", Array.Function.GetAutoFarmPlaceName())
 	Array.Function.SetStatus("AutoFarmLevel", "started")
 
-	while Array.Function.IsRunning() and Array.Config.AutoFarm.Enabled and game.PlaceId == Array.Config.PlaceId.World1 do
+	while Array.Function.IsRunning() and Array.Config.AutoFarm.Enabled and Array.Function.IsAutoFarmPlace() do
 		Array.State.AutoFarmLoopSuccess, Array.State.AutoFarmLoopError = pcall(function()
 			Array.Function.GetCharacter()
 
@@ -13112,6 +13427,7 @@ function Array.Function.AutoFarmLevel()
 	Array.State.CurrentTraveling = false
 	Array.State.AutoFarmLoopsStarted = false
 	Array.State.World1AutoFarmStarted = false
+	Array.State.World3AutoFarmStarted = false
 	Array.Function.StopFarmHover()
 	Array.Function.SetStatus("AutoFarmLevel", "stopped")
 
@@ -13121,7 +13437,7 @@ function Array.Function.AutoFarmLevel()
 end
 
 function Array.Function.KeepAutoFarmHoverRunning()
-	Array.State.AutoFarmHoverKey = "__HSKaitunWorld1AutoFarmHoverRunning"
+	Array.State.AutoFarmHoverKey = "__HSKaitunAutoFarmHoverRunning"
 
 	if _G[Array.State.AutoFarmHoverKey] == Array.State.RunId or not Array.Config.AutoFarm.Enabled then
 		return
@@ -13136,7 +13452,7 @@ function Array.Function.KeepAutoFarmHoverRunning()
 	end
 
 	Array.State.AutoFarmHoverConnection = Array.Service.RunService.Heartbeat:Connect(function()
-		if not Array.Function.IsRunning() or not Array.Config.AutoFarm.Enabled or game.PlaceId ~= Array.Config.PlaceId.World1 then
+		if not Array.Function.IsRunning() or not Array.Config.AutoFarm.Enabled or not Array.Function.IsAutoFarmPlace() then
 			return
 		end
 
@@ -13156,7 +13472,7 @@ function Array.Function.KeepAutoFarmHoverRunning()
 		end
 	end)
 
-	while Array.Function.IsRunning() and Array.Config.AutoFarm.Enabled and game.PlaceId == Array.Config.PlaceId.World1 do
+	while Array.Function.IsRunning() and Array.Config.AutoFarm.Enabled and Array.Function.IsAutoFarmPlace() do
 		task.wait(1)
 	end
 
@@ -13178,12 +13494,18 @@ function Array.Function.StartAutoFarmLoops()
 		return false
 	end
 
+	if not Array.Function.IsAutoFarmPlace() then
+		Array.Function.SetStatus("AutoFarmLevel", "wrong_place")
+		return false
+	end
+
 	if Array.State.AutoFarmLoopsStarted then
 		return true
 	end
 
 	Array.State.AutoFarmLoopsStarted = true
-	Array.State.World1AutoFarmStarted = true
+	Array.State.World1AutoFarmStarted = game.PlaceId == Array.Config.PlaceId.World1
+	Array.State.World3AutoFarmStarted = game.PlaceId == Array.Config.PlaceId.World3
 	task.spawn(Array.Function.KeepAutoFarmHoverRunning)
 	task.spawn(Array.Function.AutoFarmLevel)
 
@@ -13191,6 +13513,47 @@ function Array.Function.StartAutoFarmLoops()
 end
 
 function Array.Function.StartWorld1AutoFarm()
+	return Array.Function.StartAutoFarmLoops()
+end
+
+function Array.Function.ConfigureWorld3AutoFarm()
+	Array.Config.AutoFarm.PreferTool = Array.Config.World3AutoFarm.FallbackTool
+	Array.Config.AutoFarm.PreferMelee = true
+	Array.Config.AutoFarm.RyummyShusui.Enabled = false
+	Array.State.CurrentTarget = nil
+	Array.State.CurrentQuest = nil
+	Array.State.PreviousObjective = ""
+	Array.State.ActiveBossFallbackQuest = nil
+	Array.State.World3TrainingCheckedAt = 0
+	Array.State.World3TrainingSwordCached = nil
+	Array.State.World3ReturningToWorld2 = false
+	Array.Function.SetStatus("World3AutoFarm", "configured")
+	Array.Function.SetStatus("World3AutoFarmTool", Array.Config.AutoFarm.PreferTool)
+	Array.Function.SetStatus("World3AutoFarmMasteryTarget", Array.Config.World3AutoFarm.RequiredMastery)
+	Array.Function.SetStatus("World3AutoFarmMaxLevel", Array.Function.GetWorld3MaxLevel())
+	Array.Function.SetAutoFarmStatus("Place", "World3")
+
+	return true
+end
+
+function Array.Function.StartWorld3AutoFarm()
+	if Array.State.World3AutoFarmStarted then
+		return true
+	end
+
+	if not Array.Config.World3AutoFarm.Enabled then
+		Array.Function.SetStatus("World3AutoFarm", "disabled")
+		return false
+	end
+
+	if game.PlaceId ~= Array.Config.PlaceId.World3 then
+		Array.Function.SetStatus("World3AutoFarm", "wrong_place")
+		return false
+	end
+
+	Array.Function.ConfigureWorld3AutoFarm()
+	Array.Function.SetStatus("World3AutoFarm", "starting")
+
 	return Array.Function.StartAutoFarmLoops()
 end
 
@@ -14179,12 +14542,18 @@ assert(type(Array.Function.IsRefundCode) == "function", "refund code guard missi
 assert(type(Array.Function.StartWorld1Script) == "function", "world 1 script missing")
 assert(type(Array.Function.StartWorld2Script) == "function", "world 2 script missing")
 assert(type(Array.Function.StartWorld3Script) == "function", "world 3 script missing")
+assert(type(Array.Function.StartWorld3AutoFarm) == "function", "world 3 auto farm missing")
+assert(type(Array.Function.ConfigureWorld3AutoFarm) == "function", "world 3 auto farm config helper missing")
 assert(type(Array.Function.StartWorld3ShrineLoop) == "function", "world 3 shrine loop missing")
 assert(type(Array.Function.FindWorld3ShrinePrompt) == "function", "world 3 shrine prompt finder missing")
 assert(type(Array.Function.TriggerWorld3ShrinePrompt) == "function", "world 3 shrine prompt trigger missing")
+assert(type(Array.Function.GetWorld3MaxLevel) == "function", "world 3 max level helper missing")
+assert(type(Array.Function.ReturnToWorld2FromWorld3) == "function", "world 3 return helper missing")
 assert(type(Array.Function.GetWorld3ShrineUnlockRemote) == "function", "world 3 shrine unlock remote finder missing")
 assert(type(Array.Function.InvokeWorld3ShrineUnlockRemote) == "function", "world 3 shrine unlock remote invoke missing")
 assert(type(Array.Function.GetSwordMastery) == "function", "sword mastery helper missing")
+assert(type(Array.Function.GetWorld3TrainingSword) == "function", "world 3 mastery sword selector missing")
+assert(type(Array.Function.IsAutoFarmPlace) == "function", "auto farm place helper missing")
 assert(type(Array.Function.StartWorld2AutoFarmScript) == "function", "world 2 auto farm loader missing")
 assert(type(Array.Function.StartWorld2DirectLoadstring) == "function", "world 2 direct loadstring missing")
 assert(Array.Config.World2AutoFarm.DirectLoadstring == true or Array.Config.World2AutoFarm.DirectLoadstring == false, "world 2 direct loadstring config missing")
@@ -14192,7 +14561,9 @@ assert(type(Array.Config.World2AutoFarm.StandaloneWait) == "number", "world 2 st
 assert(type(Array.Function.IsWorld2AutoFarmSource) == "function" and Array.Function.IsWorld2AutoFarmSource(Array.World2AutoFarmCode), "world 2 source validator failed")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Config.PreferTool = \"Shusui\"", 1, true), "world 2 embedded auto farm missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "SwordMasterySwitch", 1, true), "world 2 sword mastery switch missing")
-assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Sea3RequiredGems = 2000", 1, true), "world 2 sea3 gate missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Sea3RequiredLevel = 4200", 1, true), "world 2 sea3 gate missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "DragonIslandLock.Enabled = false", 1, true), "world 2 dragon island lock disabled missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "PostMaxLevel", 1, true), "world 2 post max dragon island missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Zenith Boss", 1, true), "world 2 zenith boss priority missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Dragon Boss", 1, true), "world 2 dragon boss priority missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "HandleSuperBoss", 1, true), "world 2 super boss priority missing")
@@ -14208,6 +14579,10 @@ assert(Array.Config.World3Shrine.RequiredSwords[1] == "Shusui" and Array.Config.
 assert(Array.Config.World3Shrine.RequiredMastery == 300, "world 3 shrine mastery config missing")
 assert(Array.Config.World3Shrine.PromptObjectText == "Shrine of Three Swords", "world 3 shrine prompt config missing")
 assert(Array.Config.World3Shrine.RockModelName == "3SSRock" and Array.Config.World3Shrine.UnlockRemoteName == "Unlock", "world 3 shrine unlock config missing")
+assert(Array.Config.World3AutoFarm.Swords[1] == "Shusui" and Array.Config.World3AutoFarm.Swords[2] == "Enma" and Array.Config.World3AutoFarm.Swords[3] == "Zenith", "world 3 auto farm swords missing")
+assert(Array.Config.World3AutoFarm.MaxLevel == 4750, "world 3 auto farm max level missing")
+assert(Array.Config.World3AutoFarm.RequiredMastery == 300, "world 3 auto farm mastery config missing")
+assert(Array.Config.World3AutoFarm.FallbackTool == "Shusui", "world 3 auto farm fallback missing")
 assert(Array.Config.BypassTeleportMode == "Velocity" or Array.Config.BypassTeleportMode == "Motor6D" or Array.Config.BypassTeleportMode == "Step", "bypass teleport mode missing")
 assert(Array.Config.AutoFarm.Enabled == true or Array.Config.AutoFarm.Enabled == false, "auto farm config missing")
 assert(Array.Function.IsSafePosition(Vector3.new(0, Array.Config.AutoFarm.SafePositionFloor + 1, 0)), "safe position guard missing")
