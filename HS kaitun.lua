@@ -247,6 +247,7 @@ local Array = {
 			BossFallbackDelay = 2,
 			BossFallbackSameGiver = true,
 			BossFallbackSwitchToBoss = true,
+			BossFallbackFinishCurrentQuest = true,
 			BossFallbackAfterKill = true,
 			BossFallbackCheckDelay = 1,
 			BossMissingCancelDelay = 4,
@@ -630,6 +631,7 @@ Config.HakiRetryDelay = Config.HakiRetryDelay or 3
 Config.BossFallback = Config.BossFallback ~= false
 Config.BossFallbackSameGiver = Config.BossFallbackSameGiver ~= false
 Config.BossFallbackSwitchToBoss = Config.BossFallbackSwitchToBoss ~= false
+Config.BossFallbackFinishCurrentQuest = Config.BossFallbackFinishCurrentQuest ~= false
 Config.BossFallbackCheckDelay = Config.BossFallbackCheckDelay or 1
 Config.BossMissingCancelDelay = Config.BossMissingCancelDelay or 4
 Config.BossFallbackRequireSpawnedMob = Config.BossFallbackRequireSpawnedMob ~= false
@@ -2647,6 +2649,12 @@ end
 
 local function getSpawnedBossForFallback(level, activeQuest)
 	if not Config.BossFallback or not Config.BossFallbackSwitchToBoss then
+		return nil
+	end
+
+	if Config.BossFallbackFinishCurrentQuest and activeQuest and not isBossQuest(activeQuest) then
+		setStatus("BossFallbackMode", "finish_current_quest")
+
 		return nil
 	end
 
@@ -6572,6 +6580,7 @@ Array.Config.AutoFarm.BossFallback = Array.Config.AutoFarm.BossFallback ~= false
 Array.Config.AutoFarm.BossFallbackDelay = math.max(tonumber(Array.Config.AutoFarm.BossFallbackDelay) or 2, 0)
 Array.Config.AutoFarm.BossFallbackSameGiver = Array.Config.AutoFarm.BossFallbackSameGiver ~= false
 Array.Config.AutoFarm.BossFallbackSwitchToBoss = Array.Config.AutoFarm.BossFallbackSwitchToBoss ~= false
+Array.Config.AutoFarm.BossFallbackFinishCurrentQuest = Array.Config.AutoFarm.BossFallbackFinishCurrentQuest ~= false
 Array.Config.AutoFarm.BossFallbackAfterKill = Array.Config.AutoFarm.BossFallbackAfterKill ~= false
 Array.Config.AutoFarm.BossFallbackCheckDelay = math.max(tonumber(Array.Config.AutoFarm.BossFallbackCheckDelay) or 1, 0)
 Array.Config.AutoFarm.BossMissingCancelDelay = math.max(tonumber(Array.Config.AutoFarm.BossMissingCancelDelay) or 4, 0)
@@ -6784,7 +6793,7 @@ for Key, Value in next, {
 	["Celestial Captain"] = "Land Of Gods",
 	["Barren Rebel"] = "Land Of Gods",
 	["Enslaved Pirate"] = "Land Of Gods",
-	["God's Knight"] = "Rainbow Sky Island",
+	["God's Knight"] = "Land Of Gods",
 	["Leopard Boss"] = "Rainbow Sky Island",
 	["Thunder Disciple"] = "Rainbow Sky Island",
 	["Thunder Soldier"] = "Rainbow Sky Island",
@@ -10911,6 +10920,22 @@ function Array.Function.ShouldSwitchFarmQuest(CurrentQuest, ExpectedQuest, Expec
 	end
 
 	Array.State.ExpectedReasonText = tostring(ExpectedReason or "")
+	Array.State.CurrentQuestIsBoss = Array.Function.IsBossQuest(CurrentQuest)
+	Array.State.ExpectedQuestIsBoss = Array.Function.IsBossQuest(ExpectedQuest)
+
+	if Array.Config.AutoFarm.BossFallbackFinishCurrentQuest
+		and not Array.State.CurrentQuestIsBoss
+		and Array.State.ExpectedQuestIsBoss
+	then
+		return false
+	end
+
+	if Array.State.CurrentQuestIsBoss
+		and not Array.State.ExpectedQuestIsBoss
+		and string.find(Array.State.ExpectedReasonText, "fallback", 1, true)
+	then
+		return true
+	end
 
 	if string.find(Array.State.ExpectedReasonText, "ryummy_shusui", 1, true) then
 		return true
@@ -11155,6 +11180,10 @@ end
 function Array.Function.IsMobNameMatch(Mob, TargetName)
 	if not Mob or not TargetName or TargetName == "" then
 		return false
+	end
+
+	if Array.Function.MatchesMob then
+		return Array.Function.MatchesMob(Mob, TargetName)
 	end
 
 	Array.State.MobDisplayName = Array.Function.GetMobDisplayName(Mob)
@@ -11539,7 +11568,7 @@ function Array.Function.FarmQuestMob(Quest, Mob)
 		task.wait(Array.Config.AutoFarm.HoverStepDelay)
 	until not Array.Function.IsRunning()
 		or not Array.Config.AutoFarm.Enabled
-		or game.PlaceId ~= Array.Config.PlaceId.World1
+		or not Array.Function.IsAutoFarmPlace()
 
 	if Array.Config.AutoFarm.BossFallbackAfterKill and Array.Function.IsBossQuest(Quest) and not Array.Function.IsAliveMob(Mob) then
 		Array.Function.LockBossFallbackQuest(Quest, "boss_killed")
@@ -11728,6 +11757,16 @@ function Array.Function.TravelToCFrame(Destination)
 		return false
 	end
 
+	if game.PlaceId == Array.Config.PlaceId.World3 and Array.Config.BypassTeleport then
+		Array.State.CurrentTraveling = true
+		Array.Function.SetAutoFarmStatus("LastTravelDestination", tostring(Destination.Position))
+		Array.State.World3TravelSuccess = Array.Function.BypassTeleportToCFrame(Destination)
+		Array.State.CurrentTraveling = false
+		Array.Function.SetAutoFarmStatus("LastTravelResult", Array.State.World3TravelSuccess and "world3_bypass" or "world3_bypass_failed")
+
+		return Array.State.World3TravelSuccess
+	end
+
 	if not Array.Config.AutoFarm.SmoothTravel then
 		return Array.Function.SetCharacterCFrame(Destination)
 	end
@@ -11740,7 +11779,7 @@ function Array.Function.TravelToCFrame(Destination)
 	Array.State.TravelLastDistance = math.huge
 
 	while Array.Function.IsRunning()
-		and game.PlaceId == Array.Config.PlaceId.World1
+		and Array.Function.IsAutoFarmPlace()
 		and Array.State.Humanoid
 		and Array.State.Humanoid.Health > 0
 		and Array.State.RootPart
@@ -11903,7 +11942,7 @@ function Array.Function.RefreshNpcContainers(Force)
 		end
 
 		for _, Child in next, Container:GetChildren() do
-			if Child.Name == "NPCS" then
+			if Array.Function.NormalizeLookupName(Child.Name) == "npcs" then
 				table.insert(Array.State.NpcContainers, Child)
 			end
 
@@ -11917,11 +11956,33 @@ function Array.Function.RefreshNpcContainers(Force)
 	Array.Function.SetAutoFarmStatus("NpcContainerCount", #Array.State.NpcContainers)
 end
 
+function Array.Function.CollectMobCandidates(Root, TargetName, Depth, Candidates)
+	if not Root or Depth > Array.Config.AutoFarm.MobSearchDepth then
+		return Candidates
+	end
+
+	Candidates = Candidates or {}
+
+	for _, Child in next, Root:GetChildren() do
+		if Child:IsA("Model") and Array.Function.IsAliveMob(Child) and Array.Function.MatchesMob(Child, TargetName) then
+			table.insert(Candidates, Child)
+		end
+
+		if Child:IsA("Folder") or Child:IsA("Model") then
+			Array.Function.CollectMobCandidates(Child, TargetName, Depth + 1, Candidates)
+		end
+	end
+
+	return Candidates
+end
+
 function Array.Function.FindMob(TargetName)
 	Array.Function.RefreshNpcContainers(false)
 	Array.State.PlayerRoot = Array.Function.GetRoot()
 	Array.State.ClosestMob = nil
 	Array.State.ClosestMobDistance = math.huge
+	Array.State.FindMobSearchSource = nil
+	Array.State.FindMobCandidates = {}
 
 	if not Array.State.PlayerRoot then
 		return nil
@@ -11929,25 +11990,73 @@ function Array.Function.FindMob(TargetName)
 
 	for _, Container in next, Array.State.NpcContainers do
 		if Container and Container:IsDescendantOf(workspace) then
-			for _, Mob in next, Container:GetChildren() do
-				if Mob:IsA("Model") and Array.Function.MatchesMob(Mob, TargetName) and Array.Function.IsAliveMob(Mob) then
-					Array.State.FindMobRoot = Array.Function.GetMobRoot(Mob)
+			Array.Function.CollectMobCandidates(Container, TargetName, 0, Array.State.FindMobCandidates)
+		end
+	end
 
-					if Array.State.FindMobRoot then
-						Array.State.FindMobDistance = (Array.State.FindMobRoot.Position - Array.State.PlayerRoot.Position).Magnitude
+	if #Array.State.FindMobCandidates > 0 and not Array.State.FindMobSearchSource then
+		Array.State.FindMobSearchSource = "container"
+	end
 
-						if Array.State.FindMobDistance < Array.State.ClosestMobDistance then
-							Array.State.ClosestMobDistance = Array.State.FindMobDistance
-							Array.State.ClosestMob = Mob
-						end
-					end
+	if #Array.State.FindMobCandidates == 0 and Array.State.NpcZones then
+		Array.State.FindMobCandidates = Array.Function.CollectMobCandidates(Array.State.NpcZones, TargetName, 0, Array.State.FindMobCandidates)
+		if #Array.State.FindMobCandidates > 0 then
+			Array.State.FindMobSearchSource = "npc_zones"
+		end
+	end
+
+	if #Array.State.FindMobCandidates == 0 then
+		Array.State.FindMobCandidates = Array.Function.CollectMobCandidates(workspace, TargetName, 0, Array.State.FindMobCandidates)
+		if #Array.State.FindMobCandidates > 0 then
+			Array.State.FindMobSearchSource = "workspace"
+		end
+	end
+
+	if #Array.State.FindMobCandidates > 0 then
+		table.sort(Array.State.FindMobCandidates, function(Left, Right)
+			Array.State.LeftMobRoot = Array.Function.GetMobRoot(Left)
+			Array.State.RightMobRoot = Array.Function.GetMobRoot(Right)
+
+			if Array.State.PlayerRoot and Array.State.LeftMobRoot and Array.State.RightMobRoot then
+				Array.State.LeftMobDistance = (Array.State.LeftMobRoot.Position - Array.State.PlayerRoot.Position).Magnitude
+				Array.State.RightMobDistance = (Array.State.RightMobRoot.Position - Array.State.PlayerRoot.Position).Magnitude
+
+				if math.abs(Array.State.LeftMobDistance - Array.State.RightMobDistance) > 0.1 then
+					return Array.State.LeftMobDistance < Array.State.RightMobDistance
 				end
 			end
+
+			return Array.Function.GetMobDisplayName(Left) < Array.Function.GetMobDisplayName(Right)
+		end)
+
+		Array.State.FindMobCycleKey = Array.Function.NormalizeLookupName(TargetName)
+
+		if Array.State.FindMobCycleKey ~= Array.State.LastFindMobCycleKey
+			or Array.State.LastFindMobCandidateCount ~= #Array.State.FindMobCandidates
+		then
+			Array.State.LastFindMobCycleKey = Array.State.FindMobCycleKey
+			Array.State.LastFindMobCandidateCount = #Array.State.FindMobCandidates
+			Array.State.LastFindMobCycleIndex = 0
+		end
+
+		Array.State.LastFindMobCycleIndex = (Array.State.LastFindMobCycleIndex % #Array.State.FindMobCandidates) + 1
+		Array.State.ClosestMob = Array.State.FindMobCandidates[Array.State.LastFindMobCycleIndex]
+		Array.State.FindMobSearchSource = Array.State.FindMobSearchSource or "cycled"
+	end
+
+	if Array.State.ClosestMob then
+		Array.State.FindMobRoot = Array.Function.GetMobRoot(Array.State.ClosestMob)
+
+		if Array.State.FindMobRoot and Array.State.PlayerRoot then
+			Array.State.FindMobDistance = (Array.State.FindMobRoot.Position - Array.State.PlayerRoot.Position).Magnitude
+			Array.State.ClosestMobDistance = Array.State.FindMobDistance
 		end
 	end
 
 	Array.Function.SetAutoFarmStatus("LastFindMob", TargetName)
 	Array.Function.SetAutoFarmStatus("LastFindMobResult", Array.State.ClosestMob and Array.State.ClosestMob.Name or nil)
+	Array.Function.SetAutoFarmStatus("LastFindMobSource", Array.State.FindMobSearchSource or (Array.State.ClosestMob and "container" or nil))
+	Array.Function.SetAutoFarmStatus("LastFindMobCount", #Array.State.FindMobCandidates)
 
 	return Array.State.ClosestMob
 end
@@ -12080,7 +12189,25 @@ function Array.Function.FindWorkspaceIslandFolder(IslandName)
 
 	Array.State.WorkspaceIslands = workspace:FindFirstChild("Islands")
 
-	return Array.State.WorkspaceIslands and Array.State.WorkspaceIslands:FindFirstChild(IslandName) or nil
+	if not Array.State.WorkspaceIslands then
+		return nil
+	end
+
+	Array.State.WorkspaceIslandFolder = Array.State.WorkspaceIslands:FindFirstChild(IslandName)
+
+	if Array.State.WorkspaceIslandFolder then
+		return Array.State.WorkspaceIslandFolder
+	end
+
+	Array.State.WorkspaceIslandLookup = Array.Function.NormalizeLookupName(IslandName)
+
+	for _, IslandFolder in next, Array.State.WorkspaceIslands:GetChildren() do
+		if Array.Function.NormalizeLookupName(IslandFolder.Name) == Array.State.WorkspaceIslandLookup then
+			return IslandFolder
+		end
+	end
+
+	return nil
 end
 
 function Array.Function.FindNpcZoneIslandFolder(IslandName)
@@ -12090,7 +12217,75 @@ function Array.Function.FindNpcZoneIslandFolder(IslandName)
 
 	Array.State.NpcZones = Array.Function.GetNpcZones()
 
-	return Array.State.NpcZones and Array.State.NpcZones:FindFirstChild(IslandName) or nil
+	if not Array.State.NpcZones then
+		return nil
+	end
+
+	Array.State.NpcZoneIslandFolder = Array.State.NpcZones:FindFirstChild(IslandName)
+
+	if Array.State.NpcZoneIslandFolder then
+		return Array.State.NpcZoneIslandFolder
+	end
+
+	Array.State.NpcZoneIslandLookup = Array.Function.NormalizeLookupName(IslandName)
+
+	for _, ZoneFolder in next, Array.State.NpcZones:GetChildren() do
+		if Array.Function.NormalizeLookupName(ZoneFolder.Name) == Array.State.NpcZoneIslandLookup then
+			return ZoneFolder
+		end
+	end
+
+	return nil
+end
+
+function Array.Function.FindNpcZoneByMobName(TargetName)
+	Array.State.NpcZoneTargetName = Array.Function.TrimName(TargetName)
+
+	if Array.State.NpcZoneTargetName == "" then
+		return nil, nil, nil
+	end
+
+	Array.State.NpcZones = Array.Function.GetNpcZones()
+
+	if not Array.State.NpcZones then
+		return nil, nil, nil
+	end
+
+	local function Scan(Container, Depth)
+		if not Container or Depth > Array.Config.AutoFarm.MobSearchDepth then
+			return nil, nil
+		end
+
+		for _, Child in next, Container:GetChildren() do
+			if Child:IsA("Model") and Array.Function.MatchesMob(Child, Array.State.NpcZoneTargetName) then
+				Array.State.NpcZoneTargetCFrame = Array.Function.GetModelScanCFrame(Child)
+
+				if Array.State.NpcZoneTargetCFrame then
+					return Child, Array.State.NpcZoneTargetCFrame
+				end
+			end
+
+			if Child:IsA("Folder") or Child:IsA("Model") then
+				Array.State.NpcZoneTargetMob, Array.State.NpcZoneTargetCFrame = Scan(Child, Depth + 1)
+
+				if Array.State.NpcZoneTargetMob then
+					return Array.State.NpcZoneTargetMob, Array.State.NpcZoneTargetCFrame
+				end
+			end
+		end
+
+		return nil, nil
+	end
+
+	for _, ZoneFolder in next, Array.State.NpcZones:GetChildren() do
+		Array.State.NpcZoneTargetMob, Array.State.NpcZoneTargetCFrame = Scan(ZoneFolder:FindFirstChild("NPCS") or ZoneFolder, 0)
+
+		if Array.State.NpcZoneTargetMob then
+			return ZoneFolder, Array.State.NpcZoneTargetMob, Array.State.NpcZoneTargetCFrame
+		end
+	end
+
+	return nil, nil, nil
 end
 
 function Array.Function.GetModelScanCFrame(Model)
@@ -12129,12 +12324,6 @@ function Array.Function.CollectNpcZoneScanCFrames(ZoneFolder, TargetName)
 		return Array.State.NpcZoneScanCFrames
 	end
 
-	Array.State.NpcZoneScanContainer = ZoneFolder:FindFirstChild("NPCS")
-
-	if not Array.State.NpcZoneScanContainer then
-		return Array.State.NpcZoneScanCFrames
-	end
-
 	local function AddMobCFrame(Mob)
 		Array.State.NpcZoneScanMobCFrame = Array.Function.GetModelScanCFrame(Mob)
 
@@ -12143,18 +12332,33 @@ function Array.Function.CollectNpcZoneScanCFrames(ZoneFolder, TargetName)
 		end
 	end
 
-	for _, Mob in next, Array.State.NpcZoneScanContainer:GetChildren() do
-		if Mob:IsA("Model") and Array.Function.MatchesMob(Mob, TargetName) then
-			AddMobCFrame(Mob)
+	local function ScanContainer(Container, Depth, MatchOnly)
+		if not Container or Depth > Array.Config.AutoFarm.MobSearchDepth then
+			return
+		end
+
+		for _, Child in next, Container:GetChildren() do
+			if Child:IsA("Model") then
+				if MatchOnly then
+					if Array.Function.MatchesMob(Child, TargetName) then
+						AddMobCFrame(Child)
+					end
+				elseif Array.Function.IsAliveMob(Child) then
+					AddMobCFrame(Child)
+				end
+			end
+
+			if Child:IsA("Folder") or Child:IsA("Model") then
+				ScanContainer(Child, Depth + 1, MatchOnly)
+			end
 		end
 	end
 
+	Array.State.NpcZoneScanContainer = ZoneFolder:FindFirstChild("NPCS")
+	ScanContainer(Array.State.NpcZoneScanContainer or ZoneFolder, 0, true)
+
 	if #Array.State.NpcZoneScanCFrames == 0 then
-		for _, Mob in next, Array.State.NpcZoneScanContainer:GetChildren() do
-			if Mob:IsA("Model") and Array.Function.IsAliveMob(Mob) then
-				AddMobCFrame(Mob)
-			end
-		end
+		ScanContainer(Array.State.NpcZoneScanContainer or ZoneFolder, 0, false)
 	end
 
 	return Array.State.NpcZoneScanCFrames
@@ -12209,10 +12413,38 @@ function Array.Function.CollectQuestScanCFrames(Quest, TargetName)
 
 	if #Array.State.QuestScanCFrames == 0 then
 		Array.State.QuestScanIslandName = Array.Function.GetConfiguredQuestIslandName(Quest, TargetName)
+		Array.State.QuestScanZoneIsland = Array.Function.FindNpcZoneIslandFolder(Array.State.QuestScanIslandName)
+		Array.State.QuestScanZoneCFrames = Array.Function.CollectNpcZoneScanCFrames(Array.State.QuestScanZoneIsland, TargetName)
+
 		Array.Function.AppendCFrameScanPoints(
 			Array.State.QuestScanCFrames,
-			Array.Function.CollectNpcZoneScanCFrames(Array.Function.FindNpcZoneIslandFolder(Array.State.QuestScanIslandName), TargetName)
+			Array.State.QuestScanZoneCFrames
 		)
+
+		if #Array.State.QuestScanZoneCFrames > 0 then
+			Array.State.QuestScanIslandFolder = Array.State.QuestScanZoneIsland
+			Array.State.QuestScanSource = "npc_zone"
+		end
+	end
+
+	if #Array.State.QuestScanCFrames == 0 then
+		Array.State.QuestScanZoneIsland, Array.State.QuestScanZoneMob, Array.State.QuestScanZoneMobCFrame = Array.Function.FindNpcZoneByMobName(TargetName)
+		Array.State.QuestScanZoneCFrames = Array.Function.CollectNpcZoneScanCFrames(Array.State.QuestScanZoneIsland, TargetName)
+
+		Array.Function.AppendCFrameScanPoints(
+			Array.State.QuestScanCFrames,
+			Array.State.QuestScanZoneCFrames
+		)
+
+		if #Array.State.QuestScanZoneCFrames > 0 then
+			Array.State.QuestScanIslandFolder = Array.State.QuestScanZoneIsland
+			Array.State.QuestScanSource = "npc_zone_target"
+			Array.State.QuestScanTargetPoint = nil
+			Array.Function.SetAutoFarmStatus(
+				"LastQuestIslandScanMatchedMob",
+				Array.State.QuestScanZoneMob and Array.State.QuestScanZoneMob:GetFullName() or nil
+			)
+		end
 	end
 
 	return Array.State.QuestScanCFrames, Array.State.QuestScanIslandFolder, Array.State.QuestScanTargetPoint, Array.State.QuestScanSource
@@ -12272,7 +12504,13 @@ function Array.Function.MoveNearQuestSpawnIsland(Quest, TargetName)
 	Array.State.SpawnMoved = false
 
 	if Array.State.SpawnPointCFrame and Array.Config.AutoFarm.MobSpawnProbeTeleportScan and Array.Config.AutoFarm.MobSpawnProbeRandomScan then
-		Array.State.SpawnMoved = Array.Function.SetCharacterCFrame(Array.State.SpawnPointCFrame + Vector3.new(0, Array.Config.AutoFarm.HoverHeight, 0))
+		Array.State.SpawnMoveCFrame = Array.State.SpawnPointCFrame + Vector3.new(0, Array.Config.AutoFarm.HoverHeight, 0)
+
+		if game.PlaceId == Array.Config.PlaceId.World3 and Array.Config.BypassTeleport then
+			Array.State.SpawnMoved = Array.Function.BypassTeleportToCFrame(Array.State.SpawnMoveCFrame)
+		else
+			Array.State.SpawnMoved = Array.Function.SetCharacterCFrame(Array.State.SpawnMoveCFrame)
+		end
 	else
 		Array.State.SpawnMoved = Array.Function.MoveNearInstance(Array.State.SpawnPoint)
 	end
@@ -12323,7 +12561,7 @@ function Array.Function.ProbeQuestIslandForMob(Quest, TargetName, Reason)
 	Array.State.ProbeAttempts = math.min(Array.State.ProbeScanCount, Array.Config.AutoFarm.MobSpawnProbeBurstCount)
 
 	for Attempt = 1, Array.State.ProbeAttempts do
-		if not Array.Function.IsRunning() or game.PlaceId ~= Array.Config.PlaceId.World1 then
+		if not Array.Function.IsRunning() or not Array.Function.IsAutoFarmPlace() then
 			break
 		end
 
@@ -12344,7 +12582,14 @@ function Array.Function.ProbeQuestIslandForMob(Quest, TargetName, Reason)
 		Array.Function.SetAutoFarmStatus("LastQuestIslandScanAttempt", Attempt)
 
 		if Array.State.ProbeTargetCFrame then
-			Array.Function.SetCharacterCFrame(Array.State.ProbeTargetCFrame + Vector3.new(0, Array.Config.AutoFarm.HoverHeight, 0))
+			Array.State.ProbeMoveCFrame = Array.State.ProbeTargetCFrame + Vector3.new(0, Array.Config.AutoFarm.HoverHeight, 0)
+
+			if game.PlaceId == Array.Config.PlaceId.World3 and Array.Config.BypassTeleport then
+				Array.Function.BypassTeleportToCFrame(Array.State.ProbeMoveCFrame)
+			else
+				Array.Function.SetCharacterCFrame(Array.State.ProbeMoveCFrame)
+			end
+
 			Array.Function.RefreshNpcContainers(true)
 			task.wait(Array.Config.AutoFarm.MobSpawnProbeSettleDelay)
 		end
@@ -12560,6 +12805,15 @@ end
 
 function Array.Function.GetSpawnedBossForFallback(Level, ActiveQuest)
 	if not Array.Config.AutoFarm.BossFallback or not Array.Config.AutoFarm.BossFallbackSwitchToBoss then
+		return nil
+	end
+
+	if Array.Config.AutoFarm.BossFallbackFinishCurrentQuest
+		and ActiveQuest
+		and not Array.Function.IsBossQuest(ActiveQuest)
+	then
+		Array.Function.SetAutoFarmStatus("BossFallbackMode", "finish_current_quest")
+
 		return nil
 	end
 
@@ -13098,7 +13352,7 @@ function Array.Function.KeepHoverOnTarget(Target)
 		return false
 	end
 
-	return Array.Function.SetCharacterCFrame(Array.State.HoverTargetCFrame)
+	return Array.Function.UpdateFarmHoverVelocity(Array.State.HoverTargetCFrame)
 end
 
 function Array.Function.AutoFarmLevel()
@@ -13336,16 +13590,16 @@ function Array.Function.AutoFarmLevel()
 					Array.State.TargetRoot = Array.Function.GetMobRoot(Array.State.CurrentTarget)
 					Array.State.TargetCFrame = Array.Function.GetHoverCFrame(Array.State.TargetRoot)
 
-					if Array.State.TargetRoot and Array.State.TargetCFrame then
-						Array.State.TargetDistance = (Array.State.RootPart.Position - Array.State.TargetRoot.Position).Magnitude
+				if Array.State.TargetRoot and Array.State.TargetCFrame then
+					Array.State.TargetDistance = (Array.State.RootPart.Position - Array.State.TargetRoot.Position).Magnitude
 
-						if Array.State.TargetDistance > Array.Config.AutoFarm.DirectLockDistance then
-							Array.Function.TravelToCFrame(Array.State.TargetCFrame)
-						else
-							Array.Function.SetCharacterCFrame(Array.State.TargetCFrame)
-						end
+					if Array.State.TargetDistance > Array.Config.AutoFarm.DirectLockDistance then
+						Array.Function.TravelToCFrame(Array.State.TargetCFrame)
+					else
+						Array.Function.UpdateFarmHoverVelocity(Array.State.TargetCFrame)
+					end
 
-						Array.Function.KeepHoverOnTarget(Array.State.CurrentTarget)
+					Array.Function.KeepHoverOnTarget(Array.State.CurrentTarget)
 
 						if Array.Function.AttackTarget(Array.State.CurrentTarget) then
 							Array.State.LastQuestAttackObjective = Array.State.AutoFarmObjective
@@ -13468,7 +13722,7 @@ function Array.Function.KeepAutoFarmHoverRunning()
 		Array.State.HeartbeatHoverCFrame = Array.Function.GetHoverCFrame(Array.State.HeartbeatTargetRoot)
 
 		if Array.State.HeartbeatHoverCFrame then
-			Array.Function.SetCharacterCFrameNoYield(Array.State.HeartbeatHoverCFrame)
+			Array.Function.UpdateFarmHoverVelocity(Array.State.HeartbeatHoverCFrame)
 		end
 	end)
 
@@ -14563,6 +14817,7 @@ assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2Au
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "SwordMasterySwitch", 1, true), "world 2 sword mastery switch missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Sea3RequiredLevel = 4200", 1, true), "world 2 sea3 gate missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "DragonIslandLock.Enabled = false", 1, true), "world 2 dragon island lock disabled missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "BossFallbackFinishCurrentQuest", 1, true), "world 2 boss fallback finish quest missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "PostMaxLevel", 1, true), "world 2 post max dragon island missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Zenith Boss", 1, true), "world 2 zenith boss priority missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Dragon Boss", 1, true), "world 2 dragon boss priority missing")
@@ -14598,6 +14853,7 @@ assert(Array.Config.AutoFarm.BlackLegAutoSkills == true or Array.Config.AutoFarm
 assert(Array.Config.AutoFarm.BlackLegSkillInputMode == "Remote" or Array.Config.AutoFarm.BlackLegSkillInputMode == "Key", "black leg skill input mode missing")
 assert(Array.Config.AutoFarm.BlackLegSkillAimMouse == true or Array.Config.AutoFarm.BlackLegSkillAimMouse == false, "black leg skill aim config missing")
 assert(#Array.Config.AutoFarm.BlackLegSkillKeys > 0, "black leg skill key config missing")
+assert(Array.Config.AutoFarm.BossFallbackFinishCurrentQuest == true or Array.Config.AutoFarm.BossFallbackFinishCurrentQuest == false, "boss fallback finish quest config missing")
 assert(Array.Config.AutoFarm.RyummyShusui.BossName == "Ryummy", "ryummy shusui boss config missing")
 assert(Array.Config.AutoFarm.RyummyShusui.SwordName == "Shusui", "ryummy shusui sword config missing")
 assert(Array.Config.Sea2Quest.RequiredSwordName == "Shusui", "sea 2 shusui gate missing")
