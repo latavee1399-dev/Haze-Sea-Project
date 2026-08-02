@@ -162,7 +162,7 @@ local Array = {
 		},
 		World3AutoFarm = {
 			Enabled = true,
-			MaxLevel = 4750,
+			MaxLevel = 4800,
 			RequiredMastery = 300,
 			CheckDelay = 1,
 			Swords = {
@@ -228,12 +228,25 @@ local Array = {
 			PreferTool = "Combat",
 			PreferMelee = true,
 			MobSpawnProbeRandomScan = true,
+			World1IslandSweep = true,
 			MobSpawnProbeTeleportScan = true,
 			MobSpawnProbeMoveDelay = 0.75,
 			MobSpawnProbeBurstCount = 8,
 			MobSpawnProbeSettleDelay = 0.22,
 			MobSpawnProbeIdleDelay = 1.5,
 			MobSpawnProbeRetryDelay = 0.45,
+			QuestGiverFallbackScan = true,
+			QuestGiverFallbackScanOffsets = {
+				Vector3.new(0, 0, 0),
+				Vector3.new(220, 0, 0),
+				Vector3.new(-220, 0, 0),
+				Vector3.new(0, 0, 220),
+				Vector3.new(0, 0, -220),
+				Vector3.new(220, 0, 220),
+				Vector3.new(-220, 0, 220),
+				Vector3.new(220, 0, -220),
+				Vector3.new(-220, 0, -220),
+			},
 			EquipRetryCount = 6,
 			EquipRetryDelay = 0.12,
 			BackpackWait = 1,
@@ -253,6 +266,7 @@ local Array = {
 			BossMissingCancelDelay = 4,
 			BossFallbackRequireSpawnedMob = true,
 			BossFallbackFarmWithoutCancel = false,
+			BossFallbackSkipMissingProbe = true,
 			CurrentQuestLock = true,
 			BossQuestKillThreshold = 1,
 			RyummyShusui = {
@@ -747,7 +761,7 @@ Config.DragonIslandLock.Enabled = false
 Config.DragonIslandLock.StartLevel = tonumber(Config.DragonIslandLock.StartLevel) or 3050
 Config.DragonIslandLock.EndLevel = tonumber(Config.DragonIslandLock.EndLevel) or 4500
 Config.DragonIslandLock.PostMaxEnabled = Config.DragonIslandLock.PostMaxEnabled ~= false
-Config.DragonIslandLock.PostMaxLevel = math.max(1, math.floor(tonumber(Config.DragonIslandLock.PostMaxLevel) or 4750))
+Config.DragonIslandLock.PostMaxLevel = math.max(4800, math.floor(tonumber(Config.DragonIslandLock.PostMaxLevel) or 4800))
 Config.DragonIslandLock.SplitStartLevel = tonumber(Config.DragonIslandLock.SplitStartLevel) or 3200
 Config.DragonIslandLock.IslandName = tostring(Config.DragonIslandLock.IslandName or "Dragon Island")
 Config.DragonIslandLock.AwakenBossName = tostring(Config.DragonIslandLock.AwakenBossName or "Dragon Boss")
@@ -5875,7 +5889,7 @@ assert(Config.ZenithBossPriority.BossName == "Zenith Boss" and Config.ZenithBoss
 assert(Config.PriorityBosses[1] == Config.EnmaBossPriority and Config.PriorityBosses[2] == Config.ZenithBossPriority, "priority boss order missing")
 assert(Config.DragonIslandLock.StartLevel == 3050 and Config.DragonIslandLock.EndLevel == 4500, "dragon island level lock missing")
 assert(Config.DragonIslandLock.Enabled == false, "dragon island lock disabled missing")
-assert(Config.DragonIslandLock.PostMaxEnabled == true and Config.DragonIslandLock.PostMaxLevel == 4750, "dragon island post max lock missing")
+assert(Config.DragonIslandLock.PostMaxEnabled == true and Config.DragonIslandLock.PostMaxLevel == 4800, "dragon island post max lock missing")
 assert(Config.DragonIslandLock.AwakenBossName == "Dragon Boss" and Config.DragonIslandLock.AwakenSoulTarget == 999, "dragon awaken boss config missing")
 assert(Config.DragonIslandLock.QuestNames[1] == "Elite Beast" and Config.DragonIslandLock.QuestNames[2] == "Beast Pirate", "dragon island quest targets missing")
 assert(Config.DragonIslandLock.SuperBossPriority == true and #Config.DragonIslandLock.SuperBossNames >= 10, "dragon island super boss priority config missing")
@@ -5919,7 +5933,7 @@ task.spawn(function()
 			setStatus("ActiveProgress", questState.Progress)
 			setStatus("ActiveTarget", questState.Target)
 			local world2PostMax = Config.DragonIsland.IsPostMaxActive(level)
-			setStatus("World2Mode", world2PostMax and "post_max_4750" or "level_farm_2200_4200")
+			setStatus("World2Mode", world2PostMax and "post_max_4800" or "level_farm_2200_4200")
 			setStatus("World2PostMaxActive", world2PostMax)
 			ensureAutoHaki(CurrentTarget)
 
@@ -6483,7 +6497,7 @@ Array.Config.World3Shrine.RewardNames = type(Array.Config.World3Shrine.RewardNam
 	}
 Array.Config.World3AutoFarm = type(Array.Config.World3AutoFarm) == "table" and Array.Config.World3AutoFarm or {}
 Array.Config.World3AutoFarm.Enabled = Array.Config.World3AutoFarm.Enabled ~= false
-Array.Config.World3AutoFarm.MaxLevel = math.max(math.floor(tonumber(Array.Config.World3AutoFarm.MaxLevel) or 4750), 0)
+Array.Config.World3AutoFarm.MaxLevel = math.max(math.floor(tonumber(Array.Config.World3AutoFarm.MaxLevel) or 4800), 4800)
 Array.Config.World3AutoFarm.RequiredMastery = math.max(math.floor(tonumber(Array.Config.World3AutoFarm.RequiredMastery) or 300), 0)
 Array.Config.World3AutoFarm.CheckDelay = math.max(tonumber(Array.Config.World3AutoFarm.CheckDelay) or 1, 0.25)
 Array.Config.World3AutoFarm.Swords = type(Array.Config.World3AutoFarm.Swords) == "table"
@@ -6561,12 +6575,35 @@ Array.Config.AutoFarm.SafePositionFloor = tonumber(Array.Config.AutoFarm.SafePos
 Array.Config.AutoFarm.PreferTool = "Combat"
 Array.Config.AutoFarm.PreferMelee = Array.Config.AutoFarm.PreferMelee ~= false
 Array.Config.AutoFarm.MobSpawnProbeRandomScan = Array.Config.AutoFarm.MobSpawnProbeRandomScan ~= false
+Array.Config.AutoFarm.World1IslandSweep = Array.Config.AutoFarm.World1IslandSweep ~= false
+
+if game.PlaceId == Array.Config.PlaceId.World1 then
+	Array.Config.AutoFarm.World1IslandSweep = true
+end
+
 Array.Config.AutoFarm.MobSpawnProbeTeleportScan = Array.Config.AutoFarm.MobSpawnProbeTeleportScan ~= false
 Array.Config.AutoFarm.MobSpawnProbeMoveDelay = math.max(tonumber(Array.Config.AutoFarm.MobSpawnProbeMoveDelay) or 0.75, 0.05)
 Array.Config.AutoFarm.MobSpawnProbeBurstCount = math.max(1, math.floor(tonumber(Array.Config.AutoFarm.MobSpawnProbeBurstCount) or 8))
 Array.Config.AutoFarm.MobSpawnProbeSettleDelay = math.max(tonumber(Array.Config.AutoFarm.MobSpawnProbeSettleDelay) or 0.22, 0.05)
 Array.Config.AutoFarm.MobSpawnProbeIdleDelay = math.max(tonumber(Array.Config.AutoFarm.MobSpawnProbeIdleDelay) or 1.5, 0.1)
 Array.Config.AutoFarm.MobSpawnProbeRetryDelay = math.max(tonumber(Array.Config.AutoFarm.MobSpawnProbeRetryDelay) or 0.45, 0.05)
+Array.Config.AutoFarm.QuestGiverFallbackScan = Array.Config.AutoFarm.QuestGiverFallbackScan ~= false
+Array.Config.AutoFarm.QuestGiverFallbackScanOffsets = type(Array.Config.AutoFarm.QuestGiverFallbackScanOffsets) == "table"
+	and Array.Config.AutoFarm.QuestGiverFallbackScanOffsets
+	or {}
+if #Array.Config.AutoFarm.QuestGiverFallbackScanOffsets == 0 then
+	Array.Config.AutoFarm.QuestGiverFallbackScanOffsets = {
+		Vector3.new(0, 0, 0),
+		Vector3.new(220, 0, 0),
+		Vector3.new(-220, 0, 0),
+		Vector3.new(0, 0, 220),
+		Vector3.new(0, 0, -220),
+		Vector3.new(220, 0, 220),
+		Vector3.new(-220, 0, 220),
+		Vector3.new(220, 0, -220),
+		Vector3.new(-220, 0, -220),
+	}
+end
 Array.Config.AutoFarm.EquipRetryCount = math.max(1, math.floor(tonumber(Array.Config.AutoFarm.EquipRetryCount) or 6))
 Array.Config.AutoFarm.EquipRetryDelay = math.max(tonumber(Array.Config.AutoFarm.EquipRetryDelay) or 0.12, 0.02)
 Array.Config.AutoFarm.BackpackWait = math.max(tonumber(Array.Config.AutoFarm.BackpackWait) or 1, 0)
@@ -6586,6 +6623,12 @@ Array.Config.AutoFarm.BossFallbackCheckDelay = math.max(tonumber(Array.Config.Au
 Array.Config.AutoFarm.BossMissingCancelDelay = math.max(tonumber(Array.Config.AutoFarm.BossMissingCancelDelay) or 4, 0)
 Array.Config.AutoFarm.BossFallbackRequireSpawnedMob = Array.Config.AutoFarm.BossFallbackRequireSpawnedMob ~= false
 Array.Config.AutoFarm.BossFallbackFarmWithoutCancel = Array.Config.AutoFarm.BossFallbackFarmWithoutCancel == true
+if game.PlaceId == Array.Config.PlaceId.World1 then
+	-- World 1 bosses must be probed at their spawn area before fallback is considered.
+	Array.Config.AutoFarm.BossFallbackSkipMissingProbe = false
+else
+	Array.Config.AutoFarm.BossFallbackSkipMissingProbe = Array.Config.AutoFarm.BossFallbackSkipMissingProbe ~= false
+end
 Array.Config.AutoFarm.CurrentQuestLock = Array.Config.AutoFarm.CurrentQuestLock ~= false
 Array.Config.AutoFarm.BossQuestKillThreshold = math.max(tonumber(Array.Config.AutoFarm.BossQuestKillThreshold) or 1, 0)
 Array.Config.AutoFarm.QuestCancelRetryDelay = math.max(tonumber(Array.Config.AutoFarm.QuestCancelRetryDelay) or 3, 0)
@@ -6722,6 +6765,7 @@ for Key, Value in next, {
 	Monkey = "Tall Woods",
 	Gorilla = "Tall Woods",
 	["King Gorilla"] = "Tall Woods",
+	Vergo = "Punk Hazard",
 	["Marine Grunt"] = "Marine Base Town",
 	["Marine Captain"] = "Marine Base Town",
 } do
@@ -6747,6 +6791,7 @@ for Key, Value in next, {
 	Monkey = "Tall Woods",
 	Gorilla = "Tall Woods",
 	["King Gorilla"] = "Tall Woods",
+	Vergo = "Punk Hazard",
 	["Marine Grunt"] = "Marine Base Town",
 	["Marine Captain"] = "Marine Base Town",
 	Samurai = "Flower Capital",
@@ -6806,6 +6851,8 @@ for Key, Value in next, {
 		Array.Config.AutoFarm.QuestIslandNames[Key] = Value
 	end
 end
+-- Snow Harpy is discovered from NPC Zones because its World 1 island is not stable across map revisions.
+Array.Config.AutoFarm.QuestIslandNames["Snow Harpy"] = nil
 Array.Config.AutoFarm.QuestIslandLevelRanges = type(Array.Config.AutoFarm.QuestIslandLevelRanges) == "table" and Array.Config.AutoFarm.QuestIslandLevelRanges or {
 	{ Min = 2200, Max = 2350, Island = "Flower Capital" },
 	{ Min = 2400, Max = 2500, Island = "Udon Prison" },
@@ -6822,7 +6869,7 @@ Array.Config.AutoFarm.QuestIslandLevelRanges = type(Array.Config.AutoFarm.QuestI
 	{ Min = 4050, Max = 4150, Island = "Venom Island" },
 	{ Min = 4200, Max = 4350, Island = "Land Of Gods" },
 	{ Min = 4400, Max = 4600, Island = "Rainbow Sky Island" },
-	{ Min = 4650, Max = 4750, Island = "Egg Island" },
+	{ Min = 4650, Max = 4800, Island = "Egg Island" },
 }
 Array.Config.StatusPrint = Array.Config.StatusPrint ~= false
 Array.Config.PlayBlockWords = type(Array.Config.PlayBlockWords) == "table" and Array.Config.PlayBlockWords or {
@@ -11876,6 +11923,69 @@ function Array.Function.GetMobName(Mob)
 	return Mob and string.gsub(Mob.Name, "%d+$", "") or ""
 end
 
+function Array.Function.IsMobNameTextMatch(Text, TargetName)
+	Array.State.MobNameText = Array.Function.TrimName(Text)
+	Array.State.MobNameTextKey = Array.Function.NormalizeLookupName(Array.State.MobNameText)
+	Array.State.TargetMobTextKey = Array.Function.NormalizeLookupName(TargetName)
+
+	if Array.State.MobNameTextKey == "" or Array.State.TargetMobTextKey == "" then
+		return false
+	end
+
+	return Array.Function.IsQuestNameMatch(Array.State.MobNameText, TargetName)
+		or string.find(Array.State.MobNameTextKey, Array.State.TargetMobTextKey, 1, true) ~= nil
+end
+
+function Array.Function.HasMobNameText(Mob, TargetName)
+	if not Mob or not TargetName or TargetName == "" then
+		return false
+	end
+
+	local function CheckText(Text)
+		if Array.Function.IsMobNameTextMatch(Text, TargetName) then
+			return true
+		end
+
+		return false
+	end
+
+	local function Scan(InstanceData, Depth)
+		if not InstanceData or Depth > 4 then
+			return false
+		end
+
+		if CheckText(InstanceData.Name) then
+			return true
+		end
+
+		if InstanceData:IsA("ValueBase") then
+			if CheckText(InstanceData.Value) then
+				return true
+			end
+		elseif InstanceData:IsA("TextLabel") or InstanceData:IsA("TextButton") or InstanceData:IsA("TextBox") then
+			if CheckText(InstanceData.Text) then
+				return true
+			end
+		end
+
+		for AttributeName, AttributeValue in next, InstanceData:GetAttributes() do
+			if CheckText(AttributeName) or CheckText(AttributeValue) then
+				return true
+			end
+		end
+
+		for _, Child in next, InstanceData:GetChildren() do
+			if Scan(Child, Depth + 1) then
+				return true
+			end
+		end
+
+		return false
+	end
+
+	return Scan(Mob, 0)
+end
+
 function Array.Function.MatchesMob(Mob, TargetName)
 	Array.State.TargetMobName = Array.Function.TrimName(TargetName)
 
@@ -11892,6 +12002,10 @@ function Array.Function.MatchesMob(Mob, TargetName)
 	Array.State.StrippedMobName = Array.Function.TrimName(string.gsub(Mob.Name, "%d+$", ""))
 
 	if Array.Function.IsQuestNameMatch(Array.State.StrippedMobName, Array.State.TargetMobName) then
+		return true
+	end
+
+	if Array.Function.HasMobNameText(Mob, Array.State.TargetMobName) then
 		return true
 	end
 
@@ -12145,7 +12259,10 @@ function Array.Function.FindQuestSpawnIsland(Quest, TargetName)
 	for _, IslandFolder in next, Array.State.ObservationSpawnPoints:GetChildren() do
 		for _, SpawnPoint in next, IslandFolder:GetChildren() do
 			if SpawnPoint:IsA("BasePart")
-				and Array.Function.GetSpawnPointMobName(SpawnPoint) == Array.State.SpawnSearchTargetName
+				and Array.Function.IsQuestNameMatch(
+					Array.Function.GetSpawnPointMobName(SpawnPoint),
+					Array.State.SpawnSearchTargetName
+				)
 				and Array.Function.IsSafePosition(SpawnPoint.Position)
 			then
 				Array.State.SpawnPointDistance = Array.State.PlayerRoot and (SpawnPoint.Position - Array.State.PlayerRoot.Position).Magnitude or 0
@@ -12372,14 +12489,67 @@ function Array.Function.AppendCFrameScanPoints(TargetArray, CFrames)
 	end
 end
 
+function Array.Function.AppendQuestGiverFallbackScanPoints(TargetArray, Quest)
+	if not Array.Config.AutoFarm.QuestGiverFallbackScan or not Quest or not Quest.Giver then
+		return false
+	end
+
+	Array.State.QuestGiverFallbackCFrame = Array.Function.GetInstanceCFrame(Quest.Giver)
+	Array.State.QuestGiverFallbackAdded = 0
+
+	if not Array.State.QuestGiverFallbackCFrame
+		or not Array.Function.IsSafePosition(Array.State.QuestGiverFallbackCFrame.Position)
+	then
+		Array.Function.SetAutoFarmStatus("LastQuestGiverFallbackScan", "missing_giver_cframe")
+
+		return false
+	end
+
+	for _, Offset in next, Array.Config.AutoFarm.QuestGiverFallbackScanOffsets do
+		if typeof(Offset) == "Vector3" then
+			Array.State.QuestGiverFallbackScanCFrame = Array.State.QuestGiverFallbackCFrame + Offset
+
+			if Array.Function.IsSafePosition(Array.State.QuestGiverFallbackScanCFrame.Position) then
+				table.insert(TargetArray, Array.State.QuestGiverFallbackScanCFrame)
+				Array.State.QuestGiverFallbackAdded = Array.State.QuestGiverFallbackAdded + 1
+			end
+		end
+	end
+
+	Array.Function.SetAutoFarmStatus("LastQuestGiverFallbackScan", Quest.LevelName and (Quest.LevelName .. " " .. Quest.MobName) or Quest.MobName)
+	Array.Function.SetAutoFarmStatus("LastQuestGiverFallbackScanCount", Array.State.QuestGiverFallbackAdded)
+
+	return Array.State.QuestGiverFallbackAdded > 0
+end
+
 function Array.Function.FindQuestScanIsland(Quest, TargetName)
 	Array.State.QuestScanIslandFolder, Array.State.QuestScanTargetPoint = Array.Function.FindQuestSpawnIsland(Quest, TargetName)
+
+	Array.State.QuestScanIslandName = Array.Function.GetConfiguredQuestIslandName(Quest, TargetName)
+
+	if Array.State.QuestScanIslandName and Array.State.ObservationSpawnPoints then
+		Array.State.ConfiguredObservationIsland = Array.State.ObservationSpawnPoints:FindFirstChild(Array.State.QuestScanIslandName)
+
+		if not Array.State.ConfiguredObservationIsland then
+			Array.State.ConfiguredObservationIslandKey = Array.Function.NormalizeLookupName(Array.State.QuestScanIslandName)
+
+			for _, IslandFolder in next, Array.State.ObservationSpawnPoints:GetChildren() do
+				if Array.Function.NormalizeLookupName(IslandFolder.Name) == Array.State.ConfiguredObservationIslandKey then
+					Array.State.ConfiguredObservationIsland = IslandFolder
+					break
+				end
+			end
+		end
+
+		if Array.State.ConfiguredObservationIsland then
+			return Array.State.ConfiguredObservationIsland, Array.State.QuestScanTargetPoint, "configured_observation_island"
+		end
+	end
 
 	if Array.State.QuestScanIslandFolder then
 		return Array.State.QuestScanIslandFolder, Array.State.QuestScanTargetPoint, "observation_spawnpoints"
 	end
 
-	Array.State.QuestScanIslandName = Array.Function.GetConfiguredQuestIslandName(Quest, TargetName)
 	Array.State.QuestScanWorkspaceIsland = Array.Function.FindWorkspaceIslandFolder(Array.State.QuestScanIslandName)
 
 	if Array.State.QuestScanWorkspaceIsland then
@@ -12396,8 +12566,25 @@ function Array.Function.FindQuestScanIsland(Quest, TargetName)
 end
 
 function Array.Function.CollectQuestScanCFrames(Quest, TargetName)
-	Array.State.QuestScanIslandFolder, Array.State.QuestScanTargetPoint, Array.State.QuestScanSource = Array.Function.FindQuestScanIsland(Quest, TargetName)
 	Array.State.QuestScanCFrames = {}
+	Array.State.DynamicQuestScanZone, Array.State.DynamicQuestScanMob, Array.State.DynamicQuestScanMobCFrame = Array.Function.FindNpcZoneByMobName(TargetName)
+	Array.State.DynamicQuestScanCFrames = Array.Function.CollectNpcZoneScanCFrames(Array.State.DynamicQuestScanZone, TargetName)
+
+	Array.Function.AppendCFrameScanPoints(Array.State.QuestScanCFrames, Array.State.DynamicQuestScanCFrames)
+
+	if #Array.State.QuestScanCFrames > 0 then
+		Array.State.QuestScanIslandFolder = Array.State.DynamicQuestScanZone
+		Array.State.QuestScanTargetPoint = nil
+		Array.State.QuestScanSource = "npc_zone_target_first"
+		Array.Function.SetAutoFarmStatus(
+			"LastQuestIslandScanMatchedMob",
+			Array.State.DynamicQuestScanMob and Array.State.DynamicQuestScanMob:GetFullName() or nil
+		)
+
+		return Array.State.QuestScanCFrames, Array.State.QuestScanIslandFolder, Array.State.QuestScanTargetPoint, Array.State.QuestScanSource
+	end
+
+	Array.State.QuestScanIslandFolder, Array.State.QuestScanTargetPoint, Array.State.QuestScanSource = Array.Function.FindQuestScanIsland(Quest, TargetName)
 
 	if Array.State.QuestScanIslandFolder then
 		if Array.State.QuestScanTargetPoint then
@@ -12445,6 +12632,13 @@ function Array.Function.CollectQuestScanCFrames(Quest, TargetName)
 				Array.State.QuestScanZoneMob and Array.State.QuestScanZoneMob:GetFullName() or nil
 			)
 		end
+	end
+
+	if #Array.State.QuestScanCFrames == 0
+		and Array.Function.AppendQuestGiverFallbackScanPoints(Array.State.QuestScanCFrames, Quest)
+	then
+		Array.State.QuestScanIslandFolder = Array.State.QuestScanIslandFolder or (Quest and Quest.Giver)
+		Array.State.QuestScanSource = "quest_giver_fallback"
 	end
 
 	return Array.State.QuestScanCFrames, Array.State.QuestScanIslandFolder, Array.State.QuestScanTargetPoint, Array.State.QuestScanSource
@@ -12558,14 +12752,26 @@ function Array.Function.ProbeQuestIslandForMob(Quest, TargetName, Reason)
 		Array.State.LastSpawnProbeMove = 0
 	end
 
-	Array.State.ProbeAttempts = math.min(Array.State.ProbeScanCount, Array.Config.AutoFarm.MobSpawnProbeBurstCount)
+	if game.PlaceId == Array.Config.PlaceId.World1 and Array.Config.AutoFarm.World1IslandSweep then
+		Array.State.ProbeAttempts = Array.State.ProbeScanCount
+		Array.Function.SetAutoFarmStatus("LastQuestIslandScanMode", "full_island_sweep")
+	else
+		Array.State.ProbeAttempts = math.min(Array.State.ProbeScanCount, Array.Config.AutoFarm.MobSpawnProbeBurstCount)
+		Array.Function.SetAutoFarmStatus("LastQuestIslandScanMode", "burst")
+	end
+
+	Array.Function.SetAutoFarmStatus("LastQuestIslandScanAttempts", Array.State.ProbeAttempts)
 
 	for Attempt = 1, Array.State.ProbeAttempts do
 		if not Array.Function.IsRunning() or not Array.Function.IsAutoFarmPlace() then
 			break
 		end
 
-		if Array.Config.AutoFarm.MobSpawnProbeRandomScan then
+		if game.PlaceId == Array.Config.PlaceId.World1 and Array.Config.AutoFarm.World1IslandSweep then
+			Array.State.NextProbeIndex = ((Array.State.LastSpawnProbeIndex or 0) % Array.State.ProbeScanCount) + 1
+		elseif Attempt == 1 and Array.State.ProbeTargetPoint then
+			Array.State.NextProbeIndex = 1
+		elseif Array.Config.AutoFarm.MobSpawnProbeRandomScan then
 			Array.State.NextProbeIndex = math.random(1, Array.State.ProbeScanCount)
 
 			if Array.State.ProbeScanCount > 1 and Array.State.NextProbeIndex == Array.State.LastSpawnProbeIndex then
@@ -12642,6 +12848,15 @@ function Array.Function.GetQuestTargetProbe(Quest)
 end
 
 function Array.Function.MoveNearQuestTargetArea(Quest, TargetName)
+	Array.State.QuestTargetProbe, Array.State.QuestTargetProbeReason = Array.Function.GetQuestTargetProbe(Quest)
+
+	if Array.State.QuestTargetProbe and Array.State.QuestTargetProbeReason == "matching_zone_mob" then
+		Array.Function.SetAutoFarmStatus("LastTargetAreaQuest", Quest and Quest.MobName or nil)
+		Array.Function.SetAutoFarmStatus("LastTargetAreaProbe", "matching_zone_mob")
+
+		return Array.Function.MoveNearInstance(Array.State.QuestTargetProbe)
+	end
+
 	Array.State.MovedToSpawnIsland = Array.Function.MoveNearQuestSpawnIsland(Quest, TargetName or (Quest and Quest.MobName) or nil)
 
 	if Array.State.MovedToSpawnIsland then
@@ -12650,8 +12865,6 @@ function Array.Function.MoveNearQuestTargetArea(Quest, TargetName)
 
 		return true
 	end
-
-	Array.State.QuestTargetProbe, Array.State.QuestTargetProbeReason = Array.Function.GetQuestTargetProbe(Quest)
 
 	if not Array.State.QuestTargetProbe then
 		return false
@@ -12686,14 +12899,19 @@ function Array.Function.GetFallbackQuestForBoss(BossQuest)
 		return Array.State.FallbackProbeTarget ~= nil
 	end
 
+	local function IsFallbackCandidate(Quest, SameGiverOnly)
+		return Quest
+			and Quest.Level <= BossQuest.Level
+			and not Array.Function.IsSameQuest(Quest, BossQuest)
+			and not Array.Function.IsBossQuest(Quest)
+			and (not SameGiverOnly or Quest.Giver == BossQuest.Giver)
+	end
+
 	local function SelectFallbackQuest(SameGiverOnly)
 		Array.State.UnavailableFallbackQuest = nil
 
 		for _, Quest in next, Array.Function.GetWorld1QuestCache(false) do
-			if Quest.Level < BossQuest.Level
-				and not Array.Function.IsBossQuest(Quest)
-				and (not SameGiverOnly or Quest.Giver == BossQuest.Giver)
-			then
+			if IsFallbackCandidate(Quest, SameGiverOnly) then
 				if CanUseFallbackQuest(Quest) then
 					Array.Function.SetAutoFarmStatus("LastFallbackQuest", Quest.LevelName .. " " .. Quest.MobName)
 					return Quest
@@ -13419,6 +13637,8 @@ function Array.Function.AutoFarmLevel()
 			Array.Function.SetAutoFarmStatus("ActiveProgress", Array.State.AutoFarmQuestState.Progress)
 			Array.Function.SetAutoFarmStatus("ActiveTarget", Array.State.AutoFarmQuestState.Target)
 			Array.State.QuestScanMovedThisLoop = false
+			Array.State.SkipMissingTargetProbe = false
+			Array.State.PreProbeMissingBossFallbackQuest = nil
 			Array.State.AutoFarmQuestCompleted = Array.State.AutoFarmObjective ~= ""
 				and Array.State.AutoFarmQuestState.Target > 0
 				and Array.State.AutoFarmQuestState.Progress >= Array.State.AutoFarmQuestState.Target
@@ -13477,7 +13697,14 @@ function Array.Function.AutoFarmLevel()
 						Array.State.CurrentTarget = Array.Function.FindMob(Array.State.AutoFarmObjective)
 						Array.State.LastTargetSearch = os.clock()
 
-						if not Array.State.CurrentTarget then
+						if not Array.State.CurrentTarget
+							and Array.State.CurrentQuest
+							and Array.Function.IsBossQuest(Array.State.CurrentQuest)
+							and Array.Config.AutoFarm.BossFallbackSkipMissingProbe
+							and Array.Function.GetFallbackQuestForBoss(Array.State.CurrentQuest)
+						then
+							Array.Function.SetAutoFarmStatus("BossFallbackMode", "skip_after_accept_boss_probe")
+						elseif not Array.State.CurrentTarget then
 							Array.State.CurrentTarget, Array.State.ProbeMoved = Array.Function.ProbeQuestIslandForMob(Array.State.CurrentQuest, Array.State.AutoFarmObjective, "after_accept")
 							Array.State.QuestScanMovedThisLoop = Array.State.QuestScanMovedThisLoop or Array.State.ProbeMoved
 							Array.State.LastTargetSearch = os.clock()
@@ -13576,8 +13803,26 @@ function Array.Function.AutoFarmLevel()
 
 				Array.State.QuestForProbe = Array.State.ActiveBossFallbackQuest or Array.State.CurrentQuest or Array.Function.SelectFarmQuest(Array.State.AutoFarmPlayerLevel)
 				Array.State.DidQuestProbe = Array.State.QuestScanMovedThisLoop
+				Array.State.PreProbeMissingBossFallbackQuest = nil
 
-				if not Array.State.CurrentTarget and Array.State.QuestForProbe then
+				if not Array.State.CurrentTarget
+					and Array.State.CurrentQuest
+					and Array.Function.IsBossQuest(Array.State.CurrentQuest)
+					and Array.Config.AutoFarm.BossFallbackSkipMissingProbe
+				then
+					Array.State.PreProbeMissingBossFallbackQuest = Array.Function.GetFallbackQuestForBoss(Array.State.CurrentQuest)
+					Array.State.SkipMissingTargetProbe = Array.State.PreProbeMissingBossFallbackQuest ~= nil
+
+					if Array.State.SkipMissingTargetProbe then
+						Array.Function.SetAutoFarmStatus("BossFallbackMode", "skip_missing_boss_probe")
+						Array.Function.SetAutoFarmStatus(
+							"ActiveBossFallbackQuest",
+							Array.State.PreProbeMissingBossFallbackQuest.LevelName .. " " .. Array.State.PreProbeMissingBossFallbackQuest.MobName
+						)
+					end
+				end
+
+				if not Array.State.CurrentTarget and Array.State.QuestForProbe and not Array.State.SkipMissingTargetProbe then
 					Array.State.CurrentTarget, Array.State.ProbeMoved = Array.Function.ProbeQuestIslandForMob(Array.State.QuestForProbe, Array.State.AutoFarmObjective, "target_missing")
 					Array.State.DidQuestProbe = Array.State.DidQuestProbe or Array.State.ProbeMoved
 					Array.State.LastTargetSearch = os.clock()
@@ -13590,7 +13835,7 @@ function Array.Function.AutoFarmLevel()
 					Array.State.TargetRoot = Array.Function.GetMobRoot(Array.State.CurrentTarget)
 					Array.State.TargetCFrame = Array.Function.GetHoverCFrame(Array.State.TargetRoot)
 
-				if Array.State.TargetRoot and Array.State.TargetCFrame then
+					if Array.State.TargetRoot and Array.State.TargetCFrame then
 					Array.State.TargetDistance = (Array.State.RootPart.Position - Array.State.TargetRoot.Position).Magnitude
 
 					if Array.State.TargetDistance > Array.Config.AutoFarm.DirectLockDistance then
@@ -13604,6 +13849,14 @@ function Array.Function.AutoFarmLevel()
 						if Array.Function.AttackTarget(Array.State.CurrentTarget) then
 							Array.State.LastQuestAttackObjective = Array.State.AutoFarmObjective
 						end
+					elseif Array.State.CurrentQuest
+						and Array.Function.IsBossQuest(Array.State.CurrentQuest)
+						and Array.Config.AutoFarm.BossFallbackSkipMissingProbe
+					then
+						Array.Function.SetAutoFarmStatus("State", "boss_target_no_root")
+						Array.Function.SetAutoFarmStatus("LastMissingTarget", Array.State.AutoFarmObjective)
+						Array.State.SkipMissingTargetProbe = true
+						Array.State.CurrentTarget = nil
 					elseif Array.State.QuestForProbe and os.clock() - (Array.State.LastQuestObjectiveStart or 0) >= Array.Config.AutoFarm.MobSpawnProbeIdleDelay then
 						Array.State.CurrentTarget = select(1, Array.Function.ProbeQuestIslandForMob(Array.State.QuestForProbe, Array.State.AutoFarmObjective, "target_no_root"))
 						Array.State.LastTargetSearch = os.clock()
@@ -13611,25 +13864,48 @@ function Array.Function.AutoFarmLevel()
 				else
 					Array.Function.SetAutoFarmStatus("State", "target_missing")
 					Array.Function.SetAutoFarmStatus("LastMissingTarget", Array.State.AutoFarmObjective)
+					Array.State.SkipMissingTargetProbe = false
 
 					if Array.State.CurrentQuest and Array.Function.IsBossQuest(Array.State.CurrentQuest) then
 						if not Array.State.BossMissingSince or Array.State.BossMissingSince == 0 then
 							Array.State.BossMissingSince = os.clock()
 						end
 
-						Array.State.MissingBossFallbackQuest = Array.Function.GetFallbackQuestForBoss(Array.State.CurrentQuest)
+						Array.State.MissingBossFallbackQuest = Array.State.PreProbeMissingBossFallbackQuest
+							or Array.Function.GetFallbackQuestForBoss(Array.State.CurrentQuest)
+						Array.Function.SetAutoFarmStatus("BossFallbackMode", Array.State.MissingBossFallbackQuest and "cancel_missing_boss" or "boss_wait_no_fallback")
+						Array.Function.SetAutoFarmStatus(
+							"ActiveBossFallbackQuest",
+							Array.State.MissingBossFallbackQuest
+								and (Array.State.MissingBossFallbackQuest.LevelName .. " " .. Array.State.MissingBossFallbackQuest.MobName)
+								or nil
+						)
+						Array.State.SkipMissingTargetProbe = Array.Config.AutoFarm.BossFallbackSkipMissingProbe
+							and Array.State.MissingBossFallbackQuest ~= nil
 
 						if Array.State.MissingBossFallbackQuest
 							and os.clock() - Array.State.BossMissingSince >= Array.Config.AutoFarm.BossMissingCancelDelay
 						then
 							Array.State.CanceledMissingBoss = Array.Function.CancelActiveQuest("boss missing: " .. Array.State.CurrentQuest.MobName)
+							Array.Function.SetAutoFarmStatus("BossMissingCancelResult", tostring(Array.State.CanceledMissingBoss))
 
 							if Array.State.CanceledMissingBoss then
+								Array.State.LockedBossQuest = Array.State.CurrentQuest
+								Array.State.LockedBossFallbackQuest = Array.State.MissingBossFallbackQuest
+								Array.State.LockedBossFallbackReason = "boss_missing"
+								Array.State.LockedBossFallbackStartedAt = os.clock()
+								Array.Function.SetAutoFarmStatus(
+									"AutoFarmBossFallback",
+									"boss_missing:" .. Array.State.MissingBossFallbackQuest.LevelName .. " " .. Array.State.MissingBossFallbackQuest.MobName
+								)
 								Array.State.CurrentQuest = nil
 								Array.State.CurrentTarget = nil
 								Array.State.PreviousObjective = ""
 								Array.State.BossMissingSince = 0
 								Array.State.AutoFarmObjective = ""
+
+								task.wait(0.2)
+								return
 							end
 						end
 					else
@@ -13637,7 +13913,7 @@ function Array.Function.AutoFarmLevel()
 						Array.State.ActiveBossFallbackQuest = nil
 					end
 
-					if Array.State.QuestForProbe then
+					if Array.State.QuestForProbe and not Array.State.SkipMissingTargetProbe then
 						if not Array.State.CurrentTarget then
 							Array.State.CurrentTarget, Array.State.ProbeMoved = Array.Function.ProbeQuestIslandForMob(Array.State.QuestForProbe, Array.State.AutoFarmObjective, "missing_loop")
 							Array.State.DidQuestProbe = Array.State.DidQuestProbe or Array.State.ProbeMoved
@@ -13652,12 +13928,15 @@ function Array.Function.AutoFarmLevel()
 						if not Array.State.MovedToTargetArea then
 							Array.Function.MoveNearInstance(Array.State.QuestForProbe.Giver)
 						end
+					elseif Array.State.SkipMissingTargetProbe then
+						Array.Function.SetAutoFarmStatus("MovedToTargetArea", false)
 					end
 
 					task.wait(0.5)
 				end
 
 				if Array.State.QuestForProbe
+					and not Array.State.SkipMissingTargetProbe
 					and Array.State.LastQuestAttackObjective ~= Array.State.AutoFarmObjective
 					and os.clock() - (Array.State.LastQuestObjectiveStart or 0) >= Array.Config.AutoFarm.MobSpawnProbeIdleDelay
 				then
@@ -13781,6 +14060,10 @@ function Array.Function.ConfigureWorld3AutoFarm()
 	Array.State.World3TrainingCheckedAt = 0
 	Array.State.World3TrainingSwordCached = nil
 	Array.State.World3ReturningToWorld2 = false
+	Array.Config.AutoFarm.BossFallbackDelay = math.min(Array.Config.AutoFarm.BossFallbackDelay, 0.5)
+	Array.Config.AutoFarm.BossMissingCancelDelay = math.min(Array.Config.AutoFarm.BossMissingCancelDelay, 0.5)
+	Array.Config.AutoFarm.MobSpawnProbeBurstCount = math.max(1, math.min(Array.Config.AutoFarm.MobSpawnProbeBurstCount, 3))
+	Array.Config.AutoFarm.MobSpawnProbeRetryDelay = math.max(Array.Config.AutoFarm.MobSpawnProbeRetryDelay, 1)
 	Array.Function.SetStatus("World3AutoFarm", "configured")
 	Array.Function.SetStatus("World3AutoFarmTool", Array.Config.AutoFarm.PreferTool)
 	Array.Function.SetStatus("World3AutoFarmMasteryTarget", Array.Config.World3AutoFarm.RequiredMastery)
@@ -14776,6 +15059,8 @@ assert(type(Array.Function.AimMouseAtTarget) == "function", "black leg skill mou
 assert(type(Array.Function.FireBlackLegSkillRemote) == "function", "black leg skill remote helper missing")
 assert(type(Array.Function.ProbeQuestIslandForMob) == "function", "haze sea1 mob probe missing")
 assert(type(Array.Function.MoveNearQuestTargetArea) == "function", "haze sea1 quest area move missing")
+assert(type(Array.Function.AppendQuestGiverFallbackScanPoints) == "function", "quest giver fallback scan missing")
+assert(type(Array.Function.HasMobNameText) == "function", "mob text name matcher missing")
 assert(type(Array.Function.SetAutoFarmStatus) == "function", "auto farm status helper missing")
 assert(type(Array.Function.IsSameQuest) == "function", "quest compare helper missing")
 assert(type(Array.Function.CancelActiveQuest) == "function", "quest cancel helper missing")
@@ -14818,7 +15103,7 @@ assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2Au
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Sea3RequiredLevel = 4200", 1, true), "world 2 sea3 gate missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "DragonIslandLock.Enabled = false", 1, true), "world 2 dragon island lock disabled missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "BossFallbackFinishCurrentQuest", 1, true), "world 2 boss fallback finish quest missing")
-assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "PostMaxLevel", 1, true), "world 2 post max dragon island missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "PostMaxLevel == 4800", 1, true), "world 2 post max dragon island missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Zenith Boss", 1, true), "world 2 zenith boss priority missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Dragon Boss", 1, true), "world 2 dragon boss priority missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "HandleSuperBoss", 1, true), "world 2 super boss priority missing")
@@ -14835,7 +15120,7 @@ assert(Array.Config.World3Shrine.RequiredMastery == 300, "world 3 shrine mastery
 assert(Array.Config.World3Shrine.PromptObjectText == "Shrine of Three Swords", "world 3 shrine prompt config missing")
 assert(Array.Config.World3Shrine.RockModelName == "3SSRock" and Array.Config.World3Shrine.UnlockRemoteName == "Unlock", "world 3 shrine unlock config missing")
 assert(Array.Config.World3AutoFarm.Swords[1] == "Shusui" and Array.Config.World3AutoFarm.Swords[2] == "Enma" and Array.Config.World3AutoFarm.Swords[3] == "Zenith", "world 3 auto farm swords missing")
-assert(Array.Config.World3AutoFarm.MaxLevel == 4750, "world 3 auto farm max level missing")
+assert(Array.Config.World3AutoFarm.MaxLevel == 4800, "world 3 auto farm max level missing")
 assert(Array.Config.World3AutoFarm.RequiredMastery == 300, "world 3 auto farm mastery config missing")
 assert(Array.Config.World3AutoFarm.FallbackTool == "Shusui", "world 3 auto farm fallback missing")
 assert(Array.Config.BypassTeleportMode == "Velocity" or Array.Config.BypassTeleportMode == "Motor6D" or Array.Config.BypassTeleportMode == "Step", "bypass teleport mode missing")
@@ -14854,6 +15139,15 @@ assert(Array.Config.AutoFarm.BlackLegSkillInputMode == "Remote" or Array.Config.
 assert(Array.Config.AutoFarm.BlackLegSkillAimMouse == true or Array.Config.AutoFarm.BlackLegSkillAimMouse == false, "black leg skill aim config missing")
 assert(#Array.Config.AutoFarm.BlackLegSkillKeys > 0, "black leg skill key config missing")
 assert(Array.Config.AutoFarm.BossFallbackFinishCurrentQuest == true or Array.Config.AutoFarm.BossFallbackFinishCurrentQuest == false, "boss fallback finish quest config missing")
+assert(Array.Config.AutoFarm.BossFallbackSkipMissingProbe == true or Array.Config.AutoFarm.BossFallbackSkipMissingProbe == false, "boss fallback missing probe guard config missing")
+assert(game.PlaceId ~= Array.Config.PlaceId.World1 or Array.Config.AutoFarm.BossFallbackSkipMissingProbe == false, "world 1 boss spawn probe disabled")
+assert(Array.Config.AutoFarm.QuestIslandNames.Vergo == "Punk Hazard", "vergo quest island missing")
+assert(Array.Config.AutoFarm.QuestIslandNames["Snow Harpy"] == nil, "snow harpy must use dynamic island discovery")
+assert(game.PlaceId ~= Array.Config.PlaceId.World1 or Array.Config.AutoFarm.World1IslandSweep == true, "world 1 island sweep disabled")
+assert(type(Array.Function.CollectQuestScanCFrames) == "function", "world 1 island sweep collector missing")
+assert(type(Array.Function.FindNpcZoneByMobName) == "function", "dynamic mob zone finder missing")
+assert(Array.Function.IsQuestNameMatch("Gorillas", "Gorilla"), "gorilla plural spawn match missing")
+assert(Array.Function.IsBossQuest({ MobName = "Control Sentinel", RequiredKills = 1 }), "control sentinel boss fallback missing")
 assert(Array.Config.AutoFarm.RyummyShusui.BossName == "Ryummy", "ryummy shusui boss config missing")
 assert(Array.Config.AutoFarm.RyummyShusui.SwordName == "Shusui", "ryummy shusui sword config missing")
 assert(Array.Config.Sea2Quest.RequiredSwordName == "Shusui", "sea 2 shusui gate missing")
