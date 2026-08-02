@@ -622,10 +622,10 @@ Config.RequirePreferTool = Config.RequirePreferTool ~= false
 Config.PreferMelee = Config.PreferMelee ~= false
 Config.SwordMasterySwitch = type(Config.SwordMasterySwitch) == "table" and Config.SwordMasterySwitch or {}
 Config.SwordMasterySwitch.Enabled = Config.SwordMasterySwitch.Enabled ~= false
-Config.SwordMasterySwitch.TargetMastery = 310
+Config.SwordMasterySwitch.TargetMastery = 300
 Config.SwordMasterySwitch.BaseSword = "Shusui"
-Config.SwordMasterySwitch.SecondarySword = "Enma"
-Config.SwordMasterySwitch.FinalSword = "Zenith"
+Config.SwordMasterySwitch.SecondarySword = "Zenith"
+Config.SwordMasterySwitch.FinalSword = "Enma"
 Config.SwordSelector = type(Config.SwordSelector) == "table" and Config.SwordSelector or {}
 Config.EnmaBossPriority = type(Config.EnmaBossPriority) == "table" and Config.EnmaBossPriority or {}
 Config.EnmaBossPriority.Enabled = Config.EnmaBossPriority.Enabled ~= false
@@ -823,14 +823,18 @@ Config.DragonIslandLock.SuperBossNames[12] = "Sea Monster"
 Config.DragonIslandLock.SuperBossNames[13] = "Dough Boss"
 Config.DragonIslandLock.SuperBossNames[14] = "Favela Shanks' Mother"
 Config.Sea3Unlock = Config.Sea3Unlock ~= false
-Config.Sea3RequiredLevel = 4200
+Config.Sea3RequiredLevel = 4800
 Config.Sea3RequiredGems = 0
-Config.Sea3RequiredSwordMastery = 0
+Config.Sea3RequiredSwordMastery = 300
 Config.Sea3RequiredSwords = type(Config.Sea3RequiredSwords) == "table" and Config.Sea3RequiredSwords or {}
-Config.Sea3RequiredSwords[1] = "Enma"
-Config.Sea3RequiredSwords[2] = "Zenith"
-Config.Sea3RequiredSwords[3] = nil
+Config.Sea3RequiredSwords[1] = "Shusui"
+Config.Sea3RequiredSwords[2] = "Enma"
+Config.Sea3RequiredSwords[3] = "Zenith"
 Config.Sea3Gate = type(Config.Sea3Gate) == "table" and Config.Sea3Gate or {}
+Config.Sea3Gate.CheckDelay = math.max(0.5, tonumber(Config.Sea3Gate.CheckDelay) or 1)
+Config.Sea3Gate.LastCheckAt = nil
+Config.Sea3Gate.LastCheckLevel = nil
+Config.Sea3Gate.LastCheckResult = nil
 Config.Sea3InteractDelay = math.max(1, tonumber(Config.Sea3InteractDelay) or 3)
 Config.Sea3AcceptTimeout = math.max(1, tonumber(Config.Sea3AcceptTimeout) or 8)
 Config.Sea3SpawnRetryDelay = math.max(1, tonumber(Config.Sea3SpawnRetryDelay) or 4)
@@ -3793,17 +3797,25 @@ function Config.Sea3Gate.CheckRequiredSwords()
 
 	for _, swordName in next, Config.Sea3RequiredSwords do
 		local owned = Config.SwordSelector.HasSword(swordName)
+		local mastery = Config.SwordSelector.GetMastery(swordName)
+		local masteryReady = mastery >= Config.Sea3RequiredSwordMastery
 		local statusName = Config.SwordSelector.GetStatusName(swordName)
 
 		setStatus("Sea3" .. statusName .. "Owned", owned)
+		setStatus("Sea3" .. statusName .. "Mastery", mastery)
+		setStatus("Sea3" .. statusName .. "MasteryReady", masteryReady)
 
 		if not owned then
 			allReady = false
-			table.insert(missing, swordName)
+			table.insert(missing, swordName .. " missing")
+		elseif not masteryReady then
+			allReady = false
+			table.insert(missing, swordName .. " mastery below " .. tostring(Config.Sea3RequiredSwordMastery))
 		end
 	end
 
 	setStatus("Sea3RequiredSwordsReady", allReady)
+	setStatus("Sea3RequiredSwordMastery", Config.Sea3RequiredSwordMastery)
 	setStatus("Sea3MissingRequiredSwords", #missing > 0 and table.concat(missing, ", ") or nil)
 
 	return allReady
@@ -3811,6 +3823,14 @@ end
 
 function Config.Sea3Gate.IsReady(level)
 	level = tonumber(level) or getLevel()
+	local now = tick()
+
+	if Config.Sea3Gate.LastCheckResult ~= nil
+		and Config.Sea3Gate.LastCheckLevel == level
+		and now - (Config.Sea3Gate.LastCheckAt or 0) < Config.Sea3Gate.CheckDelay
+	then
+		return Config.Sea3Gate.LastCheckResult
+	end
 
 	local levelReady = level >= Config.Sea3RequiredLevel
 	local requiredSwordsReady = Config.Sea3Gate.CheckRequiredSwords()
@@ -3829,6 +3849,9 @@ function Config.Sea3Gate.IsReady(level)
 	setStatus("Sea3RequiredSwordsReady", requiredSwordsReady)
 	setStatus("Sea3GateReady", ready)
 	setStatus("Sea3GateBlockReason", blockReason)
+	Config.Sea3Gate.LastCheckAt = now
+	Config.Sea3Gate.LastCheckLevel = level
+	Config.Sea3Gate.LastCheckResult = ready
 
 	return ready
 end
@@ -4108,9 +4131,15 @@ end
 function Config.DragonIsland.IsPostMaxActive(level)
 	level = tonumber(level) or getLevel()
 
-	return Config.DragonIslandLock.PostMaxEnabled
+	local postMaxActive = Config.DragonIslandLock.PostMaxEnabled
 		and game.PlaceId == 14979402479
 		and level >= Config.DragonIslandLock.PostMaxLevel
+
+	if not postMaxActive then
+		return false
+	end
+
+	return not (Config.Sea3Unlock and Config.Sea3Gate.IsReady(level))
 end
 
 function Config.DragonIsland.IsActive(level)
@@ -5950,10 +5979,17 @@ assert(type(Config.DragonIsland.IsPostMaxActive) == "function", "dragon island p
 assert(type(equipInventoryItem) == "function", "inventory equip helper missing")
 assert(type(clearHoverGyro) == "function", "world 2 hover gyro cleanup missing")
 assert(Config.PreferTool == "Shusui", "world 2 shusui preference missing")
-assert(Config.SwordMasterySwitch.TargetMastery == 310, "world 2 sword mastery switch target missing")
-assert(Config.SwordMasterySwitch.BaseSword == "Shusui" and Config.SwordMasterySwitch.SecondarySword == "Enma" and Config.SwordMasterySwitch.FinalSword == "Zenith", "world 2 sword mastery switch order missing")
+assert(Config.SwordMasterySwitch.TargetMastery == 300, "world 2 sword mastery switch target missing")
+assert(Config.SwordMasterySwitch.BaseSword == "Shusui" and Config.SwordMasterySwitch.SecondarySword == "Zenith" and Config.SwordMasterySwitch.FinalSword == "Enma", "world 2 sword mastery switch order missing")
 assert(type(Config.SwordSelector.SelectTool) == "function", "world 2 sword selector missing")
-assert(Config.Sea3RequiredLevel == 4200 and Config.Sea3RequiredSwords[1] == "Enma" and Config.Sea3RequiredSwords[2] == "Zenith", "world 2 sea3 gate config missing")
+assert(
+	Config.Sea3RequiredLevel == 4800
+		and Config.Sea3RequiredSwordMastery == 300
+		and Config.Sea3RequiredSwords[1] == "Shusui"
+		and Config.Sea3RequiredSwords[2] == "Enma"
+		and Config.Sea3RequiredSwords[3] == "Zenith",
+	"world 2 sea3 gate config missing"
+)
 assert(type(Config.Sea3Gate.CheckRequiredSwords) == "function", "world 2 sea3 sword helper missing")
 assert(type(Config.Sea3Gate.IsReady) == "function", "world 2 sea3 gate helper missing")
 assert(Config.EnmaBossPriority.BossName == "Enma Boss" and Config.EnmaBossPriority.SwordName == "Enma", "enma boss priority config missing")
@@ -6005,7 +6041,7 @@ task.spawn(function()
 			setStatus("ActiveProgress", questState.Progress)
 			setStatus("ActiveTarget", questState.Target)
 			local world2PostMax = Config.DragonIsland.IsPostMaxActive(level)
-			setStatus("World2Mode", world2PostMax and "post_max_4800" or "level_farm_2200_4200")
+			setStatus("World2Mode", world2PostMax and "post_max_4800" or "level_farm_until_4800")
 			setStatus("World2PostMaxActive", world2PostMax)
 			ensureAutoHaki(CurrentTarget)
 
@@ -7235,6 +7271,29 @@ function Array.Function.NormalizeWorld2AutoFarmSource(Source)
 		return Source
 	end
 
+	local GateReplacements = {
+		{ 'Config.SwordMasterySwitch.TargetMastery = 310', 'Config.SwordMasterySwitch.TargetMastery = 300' },
+		{ 'Config.SwordMasterySwitch.SecondarySword = "Enma"', 'Config.SwordMasterySwitch.SecondarySword = "Zenith"' },
+		{ 'Config.SwordMasterySwitch.FinalSword = "Zenith"', 'Config.SwordMasterySwitch.FinalSword = "Enma"' },
+		{ 'Config.Sea3RequiredLevel = 4200', 'Config.Sea3RequiredLevel = 4800' },
+		{ 'Config.Sea3RequiredLevel = 4500', 'Config.Sea3RequiredLevel = 4800' },
+		{ 'Config.Sea3RequiredSwordMastery = 0', 'Config.Sea3RequiredSwordMastery = 300' },
+		{ 'Config.Sea3RequiredSwordMastery = 310', 'Config.Sea3RequiredSwordMastery = 300' },
+		{ 'Config.Sea3RequiredSwords[1] = "Enma"', 'Config.Sea3RequiredSwords[1] = "Shusui"' },
+		{ 'Config.Sea3RequiredSwords[2] = "Zenith"', 'Config.Sea3RequiredSwords[2] = "Enma"' },
+		{ 'Config.Sea3RequiredSwords[3] = nil', 'Config.Sea3RequiredSwords[3] = "Zenith"' },
+	}
+
+	for _, Replacement in next, GateReplacements do
+		local StartIndex, EndIndex = string.find(Source, Replacement[1], 1, true)
+
+		if StartIndex then
+			Source = string.sub(Source, 1, StartIndex - 1)
+				.. Replacement[2]
+				.. string.sub(Source, EndIndex + 1)
+		end
+	end
+
 	local StrictDragonIslandLockEnabled = 'Config.DragonIslandLock.Enabled = Config.DragonIslandLock.Enabled ~= false'
 	local DragonIslandLockEnabledIndex, DragonIslandLockEnabledEnd = string.find(Source, StrictDragonIslandLockEnabled, 1, true)
 	if DragonIslandLockEnabledIndex then
@@ -7244,7 +7303,7 @@ function Array.Function.NormalizeWorld2AutoFarmSource(Source)
 	end
 
 	local StrictSea3GateAssert = 'assert(Config.Sea3RequiredLevel == 4500 and Config.Sea3RequiredGems == 1000 and Config.Sea3RequiredSwordMastery == 310, "world 2 sea3 gate config missing")'
-	local FlexibleSea3GateAssert = 'assert(Config.Sea3RequiredLevel == 4200 and Config.Sea3RequiredSwords[1] == "Enma" and Config.Sea3RequiredSwords[2] == "Zenith", "world 2 sea3 gate config missing")'
+	local FlexibleSea3GateAssert = 'assert(Config.Sea3RequiredLevel == 4800 and Config.Sea3RequiredSwordMastery == 300 and Config.Sea3RequiredSwords[1] == "Shusui" and Config.Sea3RequiredSwords[2] == "Enma" and Config.Sea3RequiredSwords[3] == "Zenith", "world 2 sea3 gate config missing")'
 	local StartIndex, EndIndex = string.find(Source, StrictSea3GateAssert, 1, true)
 
 	if not StartIndex then
@@ -15263,7 +15322,12 @@ assert(type(Array.Config.World2AutoFarm.StandaloneWait) == "number", "world 2 st
 assert(type(Array.Function.IsWorld2AutoFarmSource) == "function" and Array.Function.IsWorld2AutoFarmSource(Array.World2AutoFarmCode), "world 2 source validator failed")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Config.PreferTool = \"Shusui\"", 1, true), "world 2 embedded auto farm missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "SwordMasterySwitch", 1, true), "world 2 sword mastery switch missing")
-assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Sea3RequiredLevel = 4200", 1, true), "world 2 sea3 gate missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, 'Config.SwordMasterySwitch.SecondarySword = "Zenith"', 1, true), "world 2 zenith mastery order missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, 'Config.SwordMasterySwitch.FinalSword = "Enma"', 1, true), "world 2 enma mastery order missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Sea3RequiredLevel = 4800", 1, true), "world 2 sea3 gate missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "Sea3RequiredSwordMastery = 300", 1, true), "world 2 sea3 mastery gate missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, 'Sea3RequiredSwords[1] = "Shusui"', 1, true), "world 2 sea3 shusui gate missing")
+assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, 'Sea3RequiredSwords[3] = "Zenith"', 1, true), "world 2 sea3 zenith gate missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "DragonIslandLock.Enabled = false", 1, true), "world 2 dragon island lock disabled missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "BossFallbackFinishCurrentQuest", 1, true), "world 2 boss fallback finish quest missing")
 assert(type(Array.World2AutoFarmCode) == "string" and string.find(Array.World2AutoFarmCode, "PostMaxLevel == 4800", 1, true), "world 2 post max dragon island missing")
