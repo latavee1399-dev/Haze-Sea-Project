@@ -63,6 +63,7 @@ end
 
 Config.Enabled = true
 Config.RunId = RunId
+Config.MultiClientOptimize = Config.MultiClientOptimize ~= false
 Config.QueueSea3Source = type(Config.QueueSea3Source) == "string" and Config.QueueSea3Source or ""
 Config.QueueSea3Urls = type(Config.QueueSea3Urls) == "table" and Config.QueueSea3Urls or {
 	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/HS%20Kaitun.lua",
@@ -82,6 +83,9 @@ Config.AttackBurstDelay = math.min(Config.AttackBurstDelay or 0.02, 0.02)
 Config.AttackRetryDelay = math.max(tonumber(Config.AttackRetryDelay) or 0.05, 0.01)
 Config.FireActivatedSignal = Config.FireActivatedSignal ~= false
 Config.LoopDelay = math.min(Config.LoopDelay or 0.08, 0.08)
+if Config.MultiClientOptimize then
+	Config.LoopDelay = math.max(Config.LoopDelay, 0.12)
+end
 Config.TargetRefreshDelay = Config.TargetRefreshDelay or 0.75
 Config.QuestRetryDelay = Config.QuestRetryDelay or 2
 Config.QuestTimeoutFarmDelay = math.max(tonumber(Config.QuestTimeoutFarmDelay) or 10, Config.QuestRetryDelay)
@@ -92,9 +96,20 @@ Config.MobSpawnProbeRandomScan = Config.MobSpawnProbeRandomScan ~= false
 Config.MobSpawnProbeMoveDelay = math.max(0.35, tonumber(Config.MobSpawnProbeMoveDelay) or 0.75)
 Config.MobSpawnProbeTeleportScan = Config.MobSpawnProbeTeleportScan ~= false
 Config.MobSpawnProbeBurstCount = math.max(1, math.floor(tonumber(Config.MobSpawnProbeBurstCount) or 8))
+Config.MobSpawnProbeBatchCount = math.clamp(
+	math.floor(tonumber(Config.MobSpawnProbeBatchCount) or 2),
+	1,
+	4
+)
+if Config.MultiClientOptimize then
+	Config.MobSpawnProbeBatchCount = math.min(Config.MobSpawnProbeBatchCount, 2)
+end
 Config.MobSpawnProbeSettleDelay = math.max(0.08, tonumber(Config.MobSpawnProbeSettleDelay) or 0.22)
 Config.MobSpawnProbeIdleDelay = math.max(0.75, tonumber(Config.MobSpawnProbeIdleDelay) or 1.5)
 Config.MobSpawnProbeRetryDelay = math.max(0.2, tonumber(Config.MobSpawnProbeRetryDelay) or 0.45)
+Config.MobSpawnProbeContainerRefreshDelay = math.max(0.5, tonumber(Config.MobSpawnProbeContainerRefreshDelay) or 1.25)
+Config.MobSpawnProbeScanCacheDuration = math.max(1, tonumber(Config.MobSpawnProbeScanCacheDuration) or 5)
+Config.HoverUpdateInterval = math.max(0.03, tonumber(Config.HoverUpdateInterval) or 0.06)
 Config.TeleportDistance = math.max(Config.TeleportDistance or 55, 55)
 Config.DirectLockDistance = math.max(Config.DirectLockDistance or 140, 140)
 Config.HoverLockDelay = math.max(tonumber(Config.HoverLockDelay) or 0.12, 0.03)
@@ -154,6 +169,7 @@ Config.HakiRetryDelay = Config.HakiRetryDelay or 3
 Config.BossFallback = Config.BossFallback ~= false
 Config.BossFallbackSameGiver = Config.BossFallbackSameGiver ~= false
 Config.BossFallbackSwitchToBoss = Config.BossFallbackSwitchToBoss ~= false
+Config.BossFallbackFinishCurrentQuest = Config.BossFallbackFinishCurrentQuest ~= false
 Config.BossFallbackCheckDelay = Config.BossFallbackCheckDelay or 1
 Config.BossMissingCancelDelay = Config.BossMissingCancelDelay or 4
 Config.BossFallbackRequireSpawnedMob = Config.BossFallbackRequireSpawnedMob ~= false
@@ -269,7 +285,7 @@ Config.DragonIslandLock.Enabled = false
 Config.DragonIslandLock.StartLevel = tonumber(Config.DragonIslandLock.StartLevel) or 3050
 Config.DragonIslandLock.EndLevel = tonumber(Config.DragonIslandLock.EndLevel) or 4500
 Config.DragonIslandLock.PostMaxEnabled = Config.DragonIslandLock.PostMaxEnabled ~= false
-Config.DragonIslandLock.PostMaxLevel = math.max(1, math.floor(tonumber(Config.DragonIslandLock.PostMaxLevel) or 4750))
+Config.DragonIslandLock.PostMaxLevel = math.max(4800, math.floor(tonumber(Config.DragonIslandLock.PostMaxLevel) or 4800))
 Config.DragonIslandLock.SplitStartLevel = tonumber(Config.DragonIslandLock.SplitStartLevel) or 3200
 Config.DragonIslandLock.IslandName = tostring(Config.DragonIslandLock.IslandName or "Dragon Island")
 Config.DragonIslandLock.AwakenBossName = tostring(Config.DragonIslandLock.AwakenBossName or "Dragon Boss")
@@ -418,6 +434,9 @@ removeMobAlias("Peanut Pirate", "Peanut Captain")
 Config.StrictMobMatching = Config.StrictMobMatching ~= false
 
 Config.Debug = Config.Debug == true
+if Config.MultiClientOptimize then
+	Config.Debug = false
+end
 Config.Status = {}
 
 local Players = game:GetService("Players")
@@ -437,6 +456,10 @@ local function debugPrint(...)
 end
 
 local function setStatus(key, value)
+	if Config.Status[key] == value then
+		return
+	end
+
 	Config.Status[key] = value
 	Config.Status.UpdatedAt = tick()
 end
@@ -667,6 +690,7 @@ local ActivateNPC = ClientEvents:WaitForChild("ActivateNPC")
 
 local Connections = {}
 local QuestCache = {}
+local QuestScanCache = {}
 local NpcContainers = {}
 local LastQuestCacheBuild = 0
 local LastContainerScan = 0
@@ -687,6 +711,7 @@ local BossMissingSince = 0
 local LastSpawnProbeKey = ""
 local LastSpawnProbeIndex = 0
 local LastSpawnProbeMove = 0
+local LastProbeNpcRefreshAt = 0
 local LastQuestObjectiveStart = 0
 local LastQuestProbeAt = 0
 local LastQuestAttackObjective = ""
@@ -2174,6 +2199,12 @@ local function getSpawnedBossForFallback(level, activeQuest)
 		return nil
 	end
 
+	if Config.BossFallbackFinishCurrentQuest and activeQuest and not isBossQuest(activeQuest) then
+		setStatus("BossFallbackMode", "finish_current_quest")
+
+		return nil
+	end
+
 	if tick() - LastBossFallbackCheck < Config.BossFallbackCheckDelay then
 		return nil
 	end
@@ -2690,6 +2721,22 @@ local function findQuestScanIsland(quest, targetName)
 end
 
 local function collectQuestScanCFrames(quest, targetName)
+	local cacheKey = table.concat({
+		tostring(game.PlaceId),
+		tostring(quest and quest.Level or ""),
+		tostring(quest and quest.LevelName or ""),
+		tostring(quest and quest.MobName or ""),
+		normalizeMobName(targetName),
+	}, ":")
+	local cached = QuestScanCache[cacheKey]
+
+	if cached
+		and tick() - cached.createdAt < Config.MobSpawnProbeScanCacheDuration
+		and (not cached.islandFolder or cached.islandFolder:IsDescendantOf(workspace))
+	then
+		return cached.cframes, cached.islandFolder, cached.targetPoint, cached.source, cached.hasConfiguredTravelCFrame
+	end
+
 	local islandFolder, targetPoint, source = findQuestScanIsland(quest, targetName)
 	local array = {}
 	local configuredTravelCFrame = getConfiguredQuestTravelCFrame(quest, targetName)
@@ -2715,6 +2762,15 @@ local function collectQuestScanCFrames(quest, targetName)
 	if #array == 0 then
 		appendCFrameScanPoints(array, collectNpcZoneScanCFrames(findNpcZoneIslandFolder(getConfiguredQuestIslandName(quest, targetName)), targetName))
 	end
+
+	QuestScanCache[cacheKey] = {
+		createdAt = tick(),
+		cframes = array,
+		islandFolder = islandFolder,
+		targetPoint = targetPoint,
+		source = source,
+		hasConfiguredTravelCFrame = hasConfiguredTravelCFrame,
+	}
 
 	return array, islandFolder, targetPoint, source, hasConfiguredTravelCFrame
 end
@@ -2914,7 +2970,7 @@ local function probeQuestIslandForMob(quest, targetName, reason)
 		LastSpawnProbeMove = 0
 	end
 
-	local attempts = math.min(scanCount, Config.MobSpawnProbeBurstCount)
+	local attempts = math.min(scanCount, Config.MobSpawnProbeBatchCount)
 
 	for attempt = 1, attempts do
 		if not isRunning() then
@@ -2952,7 +3008,15 @@ local function probeQuestIslandForMob(quest, targetName, reason)
 
 			travelToCFrame(targetCFrame)
 			syncAndActivateQuestIsland(quest, targetName, attempt == 1)
-			refreshNpcContainers(true)
+			local refreshDue = LastProbeNpcRefreshAt == 0
+				or tick() - LastProbeNpcRefreshAt >= Config.MobSpawnProbeContainerRefreshDelay
+
+			if refreshDue then
+				refreshNpcContainers(true)
+				LastProbeNpcRefreshAt = tick()
+			else
+				refreshNpcContainers(false)
+			end
 			task.wait(Config.MobSpawnProbeSettleDelay)
 		end
 
@@ -5312,7 +5376,17 @@ end)
 
 task.spawn(autoUpgradeStats)
 
-table.insert(Connections, RunService.Heartbeat:Connect(function()
+local HoverElapsed = 0
+
+table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
+	HoverElapsed = HoverElapsed + (deltaTime or 0)
+
+	if HoverElapsed < Config.HoverUpdateInterval then
+		return
+	end
+
+	HoverElapsed = 0
+
 	if not isRunning() then
 		return
 	end
@@ -5391,12 +5465,13 @@ assert(Config.ZenithBossPriority.BossName == "Zenith Boss" and Config.ZenithBoss
 assert(Config.PriorityBosses[1] == Config.EnmaBossPriority and Config.PriorityBosses[2] == Config.ZenithBossPriority, "priority boss order missing")
 assert(Config.DragonIslandLock.StartLevel == 3050 and Config.DragonIslandLock.EndLevel == 4500, "dragon island level lock missing")
 assert(Config.DragonIslandLock.Enabled == false, "dragon island lock disabled missing")
-assert(Config.DragonIslandLock.PostMaxEnabled == true and Config.DragonIslandLock.PostMaxLevel == 4750, "dragon island post max lock missing")
+assert(Config.DragonIslandLock.PostMaxEnabled == true and Config.DragonIslandLock.PostMaxLevel == 4800, "dragon island post max lock missing")
 assert(Config.DragonIslandLock.AwakenBossName == "Dragon Boss" and Config.DragonIslandLock.AwakenSoulTarget == 999, "dragon awaken boss config missing")
 assert(Config.DragonIslandLock.QuestNames[1] == "Elite Beast" and Config.DragonIslandLock.QuestNames[2] == "Beast Pirate", "dragon island quest targets missing")
 assert(Config.DragonIslandLock.SuperBossPriority == true and #Config.DragonIslandLock.SuperBossNames >= 10, "dragon island super boss priority config missing")
 assert(Config.NormalizeMobNameLoose("Elite Beasts") == Config.NormalizeMobNameLoose("Elite Beast"), "plural mob match missing")
 assert(Config.DragonIsland.MatchesConfiguredName("Beast Pirates", "Beast Pirate"), "dragon island plural quest alias missing")
+assert(Config.BossFallbackFinishCurrentQuest == true or Config.BossFallbackFinishCurrentQuest == false, "boss fallback finish quest config missing")
 assert(Config.SwordTopDownHover == true and Config.SwordHoverPitch == -90, "world 2 sword top-down hover missing")
 assert(Config.SwordHoverGyroMaxTorque >= 10000, "world 2 sword hover gyro config missing")
 assert(Config.StatOrder[1] == "Sword" and Config.StatOrder[2] == "Defense" and Config.StatOrder[3] == "Fruit", "world 2 stat order missing")
@@ -5435,7 +5510,7 @@ task.spawn(function()
 			setStatus("ActiveProgress", questState.Progress)
 			setStatus("ActiveTarget", questState.Target)
 			local world2PostMax = Config.DragonIsland.IsPostMaxActive(level)
-			setStatus("World2Mode", world2PostMax and "post_max_4750" or "level_farm_2200_4200")
+			setStatus("World2Mode", world2PostMax and "post_max_4800" or "level_farm_2200_4200")
 			setStatus("World2PostMaxActive", world2PostMax)
 			ensureAutoHaki(CurrentTarget)
 
@@ -5686,8 +5761,12 @@ task.spawn(function()
 
 			if objective ~= "" then
 				local currentTargetMatches = CurrentTarget and matchesTargetMob(CurrentTarget, objective)
+				local targetSearchDue = tick() - LastTargetSearch >= math.max(Config.MobSpawnProbeRetryDelay, 0.5)
 
-				if not CurrentTarget or not isAliveMob(CurrentTarget) or not currentTargetMatches or tick() - LastTargetSearch >= Config.TargetRefreshDelay then
+				if (not CurrentTarget and targetSearchDue)
+					or (CurrentTarget and (not isAliveMob(CurrentTarget) or not currentTargetMatches))
+					or tick() - LastTargetSearch >= Config.TargetRefreshDelay
+				then
 					CurrentTarget = Config.DragonIsland.FindTargetForObjective(objective, level)
 					LastTargetSearch = tick()
 					setStatus("LastTargetSearch", objective)
