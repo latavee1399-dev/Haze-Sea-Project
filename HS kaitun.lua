@@ -229,6 +229,10 @@ local Array = {
 			PreferMelee = true,
 			MobSpawnProbeRandomScan = true,
 			World1IslandSweep = true,
+			MobSpawnProbeBatchCount = 2,
+			MobSpawnProbeScanCacheDuration = 5,
+			MobSpawnProbeContainerRefreshDelay = 1.25,
+			HoverUpdateInterval = 0.06,
 			MobSpawnProbeTeleportScan = true,
 			MobSpawnProbeMoveDelay = 0.75,
 			MobSpawnProbeBurstCount = 8,
@@ -329,6 +333,7 @@ local Array = {
 			},
 		},
 		StatusPrint = true,
+		MultiClientOptimize = true,
 		PlayBlockWords = {
 			"playtime",
 			"afk reward",
@@ -554,6 +559,7 @@ end
 
 Config.Enabled = true
 Config.RunId = RunId
+Config.MultiClientOptimize = Config.MultiClientOptimize ~= false
 Config.QueueSea3Source = type(Config.QueueSea3Source) == "string" and Config.QueueSea3Source or ""
 Config.QueueSea3Urls = type(Config.QueueSea3Urls) == "table" and Config.QueueSea3Urls or {
 	"https://raw.githubusercontent.com/latavee1399-dev/Haze-Sea-Project/refs/heads/main/HS%20Kaitun.lua",
@@ -573,6 +579,9 @@ Config.AttackBurstDelay = math.min(Config.AttackBurstDelay or 0.02, 0.02)
 Config.AttackRetryDelay = math.max(tonumber(Config.AttackRetryDelay) or 0.05, 0.01)
 Config.FireActivatedSignal = Config.FireActivatedSignal ~= false
 Config.LoopDelay = math.min(Config.LoopDelay or 0.08, 0.08)
+if Config.MultiClientOptimize then
+	Config.LoopDelay = math.max(Config.LoopDelay, 0.12)
+end
 Config.TargetRefreshDelay = Config.TargetRefreshDelay or 0.75
 Config.QuestRetryDelay = Config.QuestRetryDelay or 2
 Config.QuestTimeoutFarmDelay = math.max(tonumber(Config.QuestTimeoutFarmDelay) or 10, Config.QuestRetryDelay)
@@ -583,9 +592,20 @@ Config.MobSpawnProbeRandomScan = Config.MobSpawnProbeRandomScan ~= false
 Config.MobSpawnProbeMoveDelay = math.max(0.35, tonumber(Config.MobSpawnProbeMoveDelay) or 0.75)
 Config.MobSpawnProbeTeleportScan = Config.MobSpawnProbeTeleportScan ~= false
 Config.MobSpawnProbeBurstCount = math.max(1, math.floor(tonumber(Config.MobSpawnProbeBurstCount) or 8))
+Config.MobSpawnProbeBatchCount = math.clamp(
+	math.floor(tonumber(Config.MobSpawnProbeBatchCount) or 2),
+	1,
+	4
+)
+if Config.MultiClientOptimize then
+	Config.MobSpawnProbeBatchCount = math.min(Config.MobSpawnProbeBatchCount, 2)
+end
 Config.MobSpawnProbeSettleDelay = math.max(0.08, tonumber(Config.MobSpawnProbeSettleDelay) or 0.22)
 Config.MobSpawnProbeIdleDelay = math.max(0.75, tonumber(Config.MobSpawnProbeIdleDelay) or 1.5)
 Config.MobSpawnProbeRetryDelay = math.max(0.2, tonumber(Config.MobSpawnProbeRetryDelay) or 0.45)
+Config.MobSpawnProbeContainerRefreshDelay = math.max(0.5, tonumber(Config.MobSpawnProbeContainerRefreshDelay) or 1.25)
+Config.MobSpawnProbeScanCacheDuration = math.max(1, tonumber(Config.MobSpawnProbeScanCacheDuration) or 5)
+Config.HoverUpdateInterval = math.max(0.03, tonumber(Config.HoverUpdateInterval) or 0.06)
 Config.TeleportDistance = math.max(Config.TeleportDistance or 55, 55)
 Config.DirectLockDistance = math.max(Config.DirectLockDistance or 140, 140)
 Config.HoverLockDelay = math.max(tonumber(Config.HoverLockDelay) or 0.12, 0.03)
@@ -910,6 +930,9 @@ removeMobAlias("Peanut Pirate", "Peanut Captain")
 Config.StrictMobMatching = Config.StrictMobMatching ~= false
 
 Config.Debug = Config.Debug == true
+if Config.MultiClientOptimize then
+	Config.Debug = false
+end
 Config.Status = {}
 
 local Players = game:GetService("Players")
@@ -929,6 +952,10 @@ local function debugPrint(...)
 end
 
 local function setStatus(key, value)
+	if Config.Status[key] == value then
+		return
+	end
+
 	Config.Status[key] = value
 	Config.Status.UpdatedAt = tick()
 end
@@ -1159,6 +1186,7 @@ local ActivateNPC = ClientEvents:WaitForChild("ActivateNPC")
 
 local Connections = {}
 local QuestCache = {}
+local QuestScanCache = {}
 local NpcContainers = {}
 local LastQuestCacheBuild = 0
 local LastContainerScan = 0
@@ -1179,6 +1207,7 @@ local BossMissingSince = 0
 local LastSpawnProbeKey = ""
 local LastSpawnProbeIndex = 0
 local LastSpawnProbeMove = 0
+local LastProbeNpcRefreshAt = 0
 local LastQuestObjectiveStart = 0
 local LastQuestProbeAt = 0
 local LastQuestAttackObjective = ""
@@ -3188,6 +3217,22 @@ local function findQuestScanIsland(quest, targetName)
 end
 
 local function collectQuestScanCFrames(quest, targetName)
+	local cacheKey = table.concat({
+		tostring(game.PlaceId),
+		tostring(quest and quest.Level or ""),
+		tostring(quest and quest.LevelName or ""),
+		tostring(quest and quest.MobName or ""),
+		normalizeMobName(targetName),
+	}, ":")
+	local cached = QuestScanCache[cacheKey]
+
+	if cached
+		and tick() - cached.createdAt < Config.MobSpawnProbeScanCacheDuration
+		and (not cached.islandFolder or cached.islandFolder:IsDescendantOf(workspace))
+	then
+		return cached.cframes, cached.islandFolder, cached.targetPoint, cached.source, cached.hasConfiguredTravelCFrame
+	end
+
 	local islandFolder, targetPoint, source = findQuestScanIsland(quest, targetName)
 	local array = {}
 	local configuredTravelCFrame = getConfiguredQuestTravelCFrame(quest, targetName)
@@ -3213,6 +3258,15 @@ local function collectQuestScanCFrames(quest, targetName)
 	if #array == 0 then
 		appendCFrameScanPoints(array, collectNpcZoneScanCFrames(findNpcZoneIslandFolder(getConfiguredQuestIslandName(quest, targetName)), targetName))
 	end
+
+	QuestScanCache[cacheKey] = {
+		createdAt = tick(),
+		cframes = array,
+		islandFolder = islandFolder,
+		targetPoint = targetPoint,
+		source = source,
+		hasConfiguredTravelCFrame = hasConfiguredTravelCFrame,
+	}
 
 	return array, islandFolder, targetPoint, source, hasConfiguredTravelCFrame
 end
@@ -3412,7 +3466,7 @@ local function probeQuestIslandForMob(quest, targetName, reason)
 		LastSpawnProbeMove = 0
 	end
 
-	local attempts = math.min(scanCount, Config.MobSpawnProbeBurstCount)
+	local attempts = math.min(scanCount, Config.MobSpawnProbeBatchCount)
 
 	for attempt = 1, attempts do
 		if not isRunning() then
@@ -3450,7 +3504,15 @@ local function probeQuestIslandForMob(quest, targetName, reason)
 
 			travelToCFrame(targetCFrame)
 			syncAndActivateQuestIsland(quest, targetName, attempt == 1)
-			refreshNpcContainers(true)
+			local refreshDue = LastProbeNpcRefreshAt == 0
+				or tick() - LastProbeNpcRefreshAt >= Config.MobSpawnProbeContainerRefreshDelay
+
+			if refreshDue then
+				refreshNpcContainers(true)
+				LastProbeNpcRefreshAt = tick()
+			else
+				refreshNpcContainers(false)
+			end
 			task.wait(Config.MobSpawnProbeSettleDelay)
 		end
 
@@ -5810,7 +5872,17 @@ end)
 
 task.spawn(autoUpgradeStats)
 
-table.insert(Connections, RunService.Heartbeat:Connect(function()
+local HoverElapsed = 0
+
+table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
+	HoverElapsed = HoverElapsed + (deltaTime or 0)
+
+	if HoverElapsed < Config.HoverUpdateInterval then
+		return
+	end
+
+	HoverElapsed = 0
+
 	if not isRunning() then
 		return
 	end
@@ -6184,8 +6256,12 @@ task.spawn(function()
 
 			if objective ~= "" then
 				local currentTargetMatches = CurrentTarget and matchesTargetMob(CurrentTarget, objective)
+				local targetSearchDue = tick() - LastTargetSearch >= math.max(Config.MobSpawnProbeRetryDelay, 0.5)
 
-				if not CurrentTarget or not isAliveMob(CurrentTarget) or not currentTargetMatches or tick() - LastTargetSearch >= Config.TargetRefreshDelay then
+				if (not CurrentTarget and targetSearchDue)
+					or (CurrentTarget and (not isAliveMob(CurrentTarget) or not currentTargetMatches))
+					or tick() - LastTargetSearch >= Config.TargetRefreshDelay
+				then
 					CurrentTarget = Config.DragonIsland.FindTargetForObjective(objective, level)
 					LastTargetSearch = tick()
 					setStatus("LastTargetSearch", objective)
@@ -6552,6 +6628,7 @@ Array.Config.BypassTeleportVelocityStepDelay = math.max(tonumber(Array.Config.By
 Array.Config.BypassTeleportVelocityMaxForce = math.max(tonumber(Array.Config.BypassTeleportVelocityMaxForce) or 100000000, 10000)
 Array.Config.BypassTeleportVelocityPower = math.max(tonumber(Array.Config.BypassTeleportVelocityPower) or 12500, 1000)
 Array.Config.SwordSellerOffset = CFrame.new(0, 4, -6)
+Array.Config.MultiClientOptimize = Array.Config.MultiClientOptimize ~= false
 Array.Config.AutoFarm = type(Array.Config.AutoFarm) == "table" and Array.Config.AutoFarm or {}
 Array.Config.AutoFarm.Enabled = Array.Config.AutoFarm.Enabled ~= false
 Array.Config.AutoFarm.StartDelay = math.max(tonumber(Array.Config.AutoFarm.StartDelay) or 1, 0)
@@ -6576,6 +6653,23 @@ Array.Config.AutoFarm.PreferTool = "Combat"
 Array.Config.AutoFarm.PreferMelee = Array.Config.AutoFarm.PreferMelee ~= false
 Array.Config.AutoFarm.MobSpawnProbeRandomScan = Array.Config.AutoFarm.MobSpawnProbeRandomScan ~= false
 Array.Config.AutoFarm.World1IslandSweep = Array.Config.AutoFarm.World1IslandSweep ~= false
+Array.Config.AutoFarm.MobSpawnProbeBatchCount = math.clamp(
+	math.floor(tonumber(Array.Config.AutoFarm.MobSpawnProbeBatchCount) or 2),
+	1,
+	4
+)
+Array.Config.AutoFarm.MobSpawnProbeScanCacheDuration = math.max(
+	tonumber(Array.Config.AutoFarm.MobSpawnProbeScanCacheDuration) or 5,
+	1
+)
+Array.Config.AutoFarm.MobSpawnProbeContainerRefreshDelay = math.max(
+	tonumber(Array.Config.AutoFarm.MobSpawnProbeContainerRefreshDelay) or 1.25,
+	0.5
+)
+Array.Config.AutoFarm.HoverUpdateInterval = math.max(
+	tonumber(Array.Config.AutoFarm.HoverUpdateInterval) or 0.06,
+	0.03
+)
 
 if game.PlaceId == Array.Config.PlaceId.World1 then
 	Array.Config.AutoFarm.World1IslandSweep = true
@@ -6713,6 +6807,12 @@ then
 	Array.Config.AutoFarm.AttackBurst = 2
 	Array.Config.AutoFarm.AttackBurstDelay = 0.02
 	Array.Config.AutoFarm.AttackDelay = 0.06
+end
+if Array.Config.MultiClientOptimize then
+	Array.Config.AutoFarm.LoopDelay = math.max(Array.Config.AutoFarm.LoopDelay, 0.12)
+	Array.Config.AutoFarm.SearchMobDelay = math.max(Array.Config.AutoFarm.SearchMobDelay, 0.5)
+	Array.Config.AutoFarm.TargetRefreshDelay = math.max(Array.Config.AutoFarm.TargetRefreshDelay, 0.9)
+	Array.Config.AutoFarm.MobSpawnProbeBatchCount = math.min(Array.Config.AutoFarm.MobSpawnProbeBatchCount, 2)
 end
 Array.Config.AutoFarm.FireActivatedSignal = Array.Config.AutoFarm.FireActivatedSignal ~= false
 Array.Config.AutoFarm.UpdateMousePosition = Array.Config.AutoFarm.UpdateMousePosition ~= false
@@ -6902,6 +7002,11 @@ Array.Config.Codes = type(Array.Config.Codes) == "table" and Array.Config.Codes 
 }
 Array.Config.Debug = Array.Config.Debug ~= false
 
+if Array.Config.MultiClientOptimize then
+	Array.Config.StatusPrint = false
+	Array.Config.Debug = false
+end
+
 _G.HSKaitun = Array
 
 Array.Service.Players = game:GetService("Players")
@@ -6925,6 +7030,10 @@ function Array.Function.DebugPrint(...)
 end
 
 function Array.Function.SetStatus(Key, Value)
+	if Array.State.Status[Key] == Value then
+		return
+	end
+
 	Array.State.Status[Key] = Value
 	Array.State.Status.UpdatedAt = tick()
 
@@ -11638,6 +11747,10 @@ end
 
 function Array.Function.SetAutoFarmStatus(Key, Value)
 	Array.State.AutoFarmStatus = type(Array.State.AutoFarmStatus) == "table" and Array.State.AutoFarmStatus or {}
+	if Array.State.AutoFarmStatus[Key] == Value then
+		return
+	end
+
 	Array.State.AutoFarmStatus[Key] = Value
 	Array.State.AutoFarmStatus.UpdatedAt = os.clock()
 end
@@ -12127,34 +12240,23 @@ function Array.Function.FindMob(TargetName)
 	end
 
 	if #Array.State.FindMobCandidates > 0 then
-		table.sort(Array.State.FindMobCandidates, function(Left, Right)
-			Array.State.LeftMobRoot = Array.Function.GetMobRoot(Left)
-			Array.State.RightMobRoot = Array.Function.GetMobRoot(Right)
+		Array.State.ClosestMobIndex = 1
+		Array.State.ClosestMobDistance = math.huge
 
-			if Array.State.PlayerRoot and Array.State.LeftMobRoot and Array.State.RightMobRoot then
-				Array.State.LeftMobDistance = (Array.State.LeftMobRoot.Position - Array.State.PlayerRoot.Position).Magnitude
-				Array.State.RightMobDistance = (Array.State.RightMobRoot.Position - Array.State.PlayerRoot.Position).Magnitude
+		for Index, Candidate in next, Array.State.FindMobCandidates do
+			Array.State.CandidateRoot = Array.Function.GetMobRoot(Candidate)
 
-				if math.abs(Array.State.LeftMobDistance - Array.State.RightMobDistance) > 0.1 then
-					return Array.State.LeftMobDistance < Array.State.RightMobDistance
+			if Array.State.PlayerRoot and Array.State.CandidateRoot then
+				Array.State.CandidateDistance = (Array.State.CandidateRoot.Position - Array.State.PlayerRoot.Position).Magnitude
+
+				if Array.State.CandidateDistance < Array.State.ClosestMobDistance then
+					Array.State.ClosestMobDistance = Array.State.CandidateDistance
+					Array.State.ClosestMobIndex = Index
 				end
 			end
-
-			return Array.Function.GetMobDisplayName(Left) < Array.Function.GetMobDisplayName(Right)
-		end)
-
-		Array.State.FindMobCycleKey = Array.Function.NormalizeLookupName(TargetName)
-
-		if Array.State.FindMobCycleKey ~= Array.State.LastFindMobCycleKey
-			or Array.State.LastFindMobCandidateCount ~= #Array.State.FindMobCandidates
-		then
-			Array.State.LastFindMobCycleKey = Array.State.FindMobCycleKey
-			Array.State.LastFindMobCandidateCount = #Array.State.FindMobCandidates
-			Array.State.LastFindMobCycleIndex = 0
 		end
 
-		Array.State.LastFindMobCycleIndex = (Array.State.LastFindMobCycleIndex % #Array.State.FindMobCandidates) + 1
-		Array.State.ClosestMob = Array.State.FindMobCandidates[Array.State.LastFindMobCycleIndex]
+		Array.State.ClosestMob = Array.State.FindMobCandidates[Array.State.ClosestMobIndex]
 		Array.State.FindMobSearchSource = Array.State.FindMobSearchSource or "cycled"
 	end
 
@@ -12566,7 +12668,43 @@ function Array.Function.FindQuestScanIsland(Quest, TargetName)
 end
 
 function Array.Function.CollectQuestScanCFrames(Quest, TargetName)
+	Array.State.QuestScanCache = type(Array.State.QuestScanCache) == "table" and Array.State.QuestScanCache or {}
+	Array.State.QuestScanCacheKey = table.concat({
+		tostring(game.PlaceId),
+		tostring(Quest and Quest.Level or ""),
+		tostring(Quest and Quest.LevelName or ""),
+		tostring(Quest and Quest.MobName or ""),
+		Array.Function.NormalizeLookupName(TargetName),
+	}, ":")
+	Array.State.QuestScanCacheEntry = Array.State.QuestScanCache[Array.State.QuestScanCacheKey]
+
+	if Array.State.QuestScanCacheEntry
+		and os.clock() - Array.State.QuestScanCacheEntry.CreatedAt < Array.Config.AutoFarm.MobSpawnProbeScanCacheDuration
+		and (not Array.State.QuestScanCacheEntry.IslandFolder
+			or Array.State.QuestScanCacheEntry.IslandFolder:IsDescendantOf(workspace))
+	then
+		Array.State.QuestScanCFrames = Array.State.QuestScanCacheEntry.CFrames
+		Array.State.QuestScanIslandFolder = Array.State.QuestScanCacheEntry.IslandFolder
+		Array.State.QuestScanTargetPoint = Array.State.QuestScanCacheEntry.TargetPoint
+		Array.State.QuestScanSource = Array.State.QuestScanCacheEntry.Source
+		Array.Function.SetAutoFarmStatus("LastQuestIslandScanCache", "hit")
+
+		return Array.State.QuestScanCFrames, Array.State.QuestScanIslandFolder, Array.State.QuestScanTargetPoint, Array.State.QuestScanSource
+	end
+
+	Array.Function.SetAutoFarmStatus("LastQuestIslandScanCache", "miss")
 	Array.State.QuestScanCFrames = {}
+
+	local function SaveQuestScanCache()
+		Array.State.QuestScanCache[Array.State.QuestScanCacheKey] = {
+			CreatedAt = os.clock(),
+			CFrames = Array.State.QuestScanCFrames,
+			IslandFolder = Array.State.QuestScanIslandFolder,
+			TargetPoint = Array.State.QuestScanTargetPoint,
+			Source = Array.State.QuestScanSource,
+		}
+	end
+
 	Array.State.DynamicQuestScanZone, Array.State.DynamicQuestScanMob, Array.State.DynamicQuestScanMobCFrame = Array.Function.FindNpcZoneByMobName(TargetName)
 	Array.State.DynamicQuestScanCFrames = Array.Function.CollectNpcZoneScanCFrames(Array.State.DynamicQuestScanZone, TargetName)
 
@@ -12580,6 +12718,7 @@ function Array.Function.CollectQuestScanCFrames(Quest, TargetName)
 			"LastQuestIslandScanMatchedMob",
 			Array.State.DynamicQuestScanMob and Array.State.DynamicQuestScanMob:GetFullName() or nil
 		)
+		SaveQuestScanCache()
 
 		return Array.State.QuestScanCFrames, Array.State.QuestScanIslandFolder, Array.State.QuestScanTargetPoint, Array.State.QuestScanSource
 	end
@@ -12640,6 +12779,8 @@ function Array.Function.CollectQuestScanCFrames(Quest, TargetName)
 		Array.State.QuestScanIslandFolder = Array.State.QuestScanIslandFolder or (Quest and Quest.Giver)
 		Array.State.QuestScanSource = "quest_giver_fallback"
 	end
+
+	SaveQuestScanCache()
 
 	return Array.State.QuestScanCFrames, Array.State.QuestScanIslandFolder, Array.State.QuestScanTargetPoint, Array.State.QuestScanSource
 end
@@ -12753,8 +12894,11 @@ function Array.Function.ProbeQuestIslandForMob(Quest, TargetName, Reason)
 	end
 
 	if game.PlaceId == Array.Config.PlaceId.World1 and Array.Config.AutoFarm.World1IslandSweep then
-		Array.State.ProbeAttempts = Array.State.ProbeScanCount
-		Array.Function.SetAutoFarmStatus("LastQuestIslandScanMode", "full_island_sweep")
+		Array.State.ProbeAttempts = math.min(
+			Array.State.ProbeScanCount,
+			Array.Config.AutoFarm.MobSpawnProbeBatchCount
+		)
+		Array.Function.SetAutoFarmStatus("LastQuestIslandScanMode", "full_island_sweep_batched")
 	else
 		Array.State.ProbeAttempts = math.min(Array.State.ProbeScanCount, Array.Config.AutoFarm.MobSpawnProbeBurstCount)
 		Array.Function.SetAutoFarmStatus("LastQuestIslandScanMode", "burst")
@@ -12796,7 +12940,15 @@ function Array.Function.ProbeQuestIslandForMob(Quest, TargetName, Reason)
 				Array.Function.SetCharacterCFrame(Array.State.ProbeMoveCFrame)
 			end
 
-			Array.Function.RefreshNpcContainers(true)
+			Array.State.ProbeRefreshDue = not Array.State.LastProbeNpcRefreshAt
+				or os.clock() - Array.State.LastProbeNpcRefreshAt >= Array.Config.AutoFarm.MobSpawnProbeContainerRefreshDelay
+
+			if Array.State.ProbeRefreshDue then
+				Array.Function.RefreshNpcContainers(true)
+				Array.State.LastProbeNpcRefreshAt = os.clock()
+			else
+				Array.Function.RefreshNpcContainers(false)
+			end
 			task.wait(Array.Config.AutoFarm.MobSpawnProbeSettleDelay)
 		end
 
@@ -13789,9 +13941,12 @@ function Array.Function.AutoFarmLevel()
 			end
 
 			if Array.State.AutoFarmObjective ~= "" then
-				if not Array.State.CurrentTarget
-					or not Array.Function.IsAliveMob(Array.State.CurrentTarget)
-					or not Array.Function.MatchesMob(Array.State.CurrentTarget, Array.State.AutoFarmObjective)
+				Array.State.TargetSearchDue = os.clock() - (Array.State.LastTargetSearch or 0) >= Array.Config.AutoFarm.SearchMobDelay
+
+				if (not Array.State.CurrentTarget and Array.State.TargetSearchDue)
+					or (Array.State.CurrentTarget
+						and (not Array.Function.IsAliveMob(Array.State.CurrentTarget)
+							or not Array.Function.MatchesMob(Array.State.CurrentTarget, Array.State.AutoFarmObjective)))
 					or os.clock() - (Array.State.LastTargetSearch or 0) >= Array.Config.AutoFarm.TargetRefreshDelay
 				then
 					Array.State.CurrentTarget = Array.Function.FindMob(Array.State.AutoFarmObjective)
@@ -13984,7 +14139,15 @@ function Array.Function.KeepAutoFarmHoverRunning()
 		end)
 	end
 
-	Array.State.AutoFarmHoverConnection = Array.Service.RunService.Heartbeat:Connect(function()
+	Array.State.AutoFarmHoverConnection = Array.Service.RunService.Heartbeat:Connect(function(DeltaTime)
+		Array.State.AutoFarmHoverElapsed = (Array.State.AutoFarmHoverElapsed or 0) + (DeltaTime or 0)
+
+		if Array.State.AutoFarmHoverElapsed < Array.Config.AutoFarm.HoverUpdateInterval then
+			return
+		end
+
+		Array.State.AutoFarmHoverElapsed = 0
+
 		if not Array.Function.IsRunning() or not Array.Config.AutoFarm.Enabled or not Array.Function.IsAutoFarmPlace() then
 			return
 		end
@@ -15125,6 +15288,9 @@ assert(Array.Config.World3AutoFarm.RequiredMastery == 300, "world 3 auto farm ma
 assert(Array.Config.World3AutoFarm.FallbackTool == "Shusui", "world 3 auto farm fallback missing")
 assert(Array.Config.BypassTeleportMode == "Velocity" or Array.Config.BypassTeleportMode == "Motor6D" or Array.Config.BypassTeleportMode == "Step", "bypass teleport mode missing")
 assert(Array.Config.AutoFarm.Enabled == true or Array.Config.AutoFarm.Enabled == false, "auto farm config missing")
+assert(Array.Config.MultiClientOptimize == true or Array.Config.MultiClientOptimize == false, "multi-client optimization config missing")
+assert(Array.Config.AutoFarm.MobSpawnProbeBatchCount >= 1, "batched island probe config missing")
+assert(Array.Config.AutoFarm.HoverUpdateInterval >= 0.03, "hover update throttle config missing")
 assert(Array.Function.IsSafePosition(Vector3.new(0, Array.Config.AutoFarm.SafePositionFloor + 1, 0)), "safe position guard missing")
 assert(not Array.Function.IsSafePosition(Vector3.new(0, Array.Config.AutoFarm.SafePositionFloor - 1, 0)), "unsafe position guard missing")
 assert(Array.Config.SwordName == "Combat", "combat config missing")
