@@ -392,7 +392,9 @@ Config.QuestIslandNames = Config.QuestIslandNames or {
 	["Venom Monster"] = "Venom Island",
 	["Venom Poacher"] = "Venom Island",
 	["Venom Boss"] = "Venom Island",
+	["Vergo"] = "Hot Island",
 }
+Config.QuestIslandNames["Vergo"] = "Hot Island"
 Config.QuestIslandLevelRanges = Config.QuestIslandLevelRanges or {
 	{ Min = 2200, Max = 2350, Island = "Flower Capital" },
 	{ Min = 2400, Max = 2500, Island = "Udon Prison" },
@@ -413,7 +415,20 @@ Config.QuestTravelPositions = Config.QuestTravelPositions or {
 	["Beast Pirate"] = Vector3.new(7278.083984375, 1120.350830078125, 7403.4150390625),
 	["Elite Beast"] = Vector3.new(7278.083984375, 1120.350830078125, 7403.4150390625),
 	["Dragon Boss"] = Vector3.new(7278.083984375, 1120.350830078125, 7403.4150390625),
+	["Vergo"] = Vector3.new(2000, 100, -3200),
 }
+Config.QuestTravelPositions["Vergo"] = Vector3.new(2000, 100, -3200)
+Config.PreSea3Farm = type(Config.PreSea3Farm) == "table" and Config.PreSea3Farm or {}
+Config.PreSea3Farm.Enabled = Config.PreSea3Farm.Enabled ~= false
+Config.PreSea3Farm.StartLevel = math.max(1, math.floor(tonumber(Config.PreSea3Farm.StartLevel) or 4200))
+Config.PreSea3Farm.EndLevel = math.max(
+	Config.PreSea3Farm.StartLevel,
+	math.floor(tonumber(Config.PreSea3Farm.EndLevel) or 4800)
+)
+Config.PreSea3Farm.IslandName = tostring(Config.PreSea3Farm.IslandName or "Venom Island")
+Config.PreSea3Farm.QuestNames = type(Config.PreSea3Farm.QuestNames) == "table" and Config.PreSea3Farm.QuestNames or {}
+Config.PreSea3Farm.QuestNames[1] = "Venom Poacher"
+Config.PreSea3Farm.QuestNames[2] = "Venom Monster"
 
 local function removeMobAlias(targetName, aliasName)
 	local aliases = Config.MobNameAliases[targetName]
@@ -1918,7 +1933,76 @@ local function getFallbackQuestForBossSafely(bossQuest)
 	return result
 end
 
+function Config.PreSea3Farm.IsActive(level)
+	level = tonumber(level) or getLevel()
+
+	return Config.PreSea3Farm.Enabled
+		and game.PlaceId == 14979402479
+		and level >= Config.PreSea3Farm.StartLevel
+		and level < Config.PreSea3Farm.EndLevel
+end
+
+function Config.PreSea3Farm.IsQuestObjective(objective)
+	for _, targetName in next, Config.PreSea3Farm.QuestNames do
+		if tostring(objective or "") == targetName then
+			return true
+		end
+	end
+
+	return false
+end
+
+function Config.PreSea3Farm.SelectQuest(level)
+	if not Config.PreSea3Farm.IsActive(level) then
+		return nil, nil
+	end
+
+	local best = nil
+
+	for _, quest in next, getQuestCache(false) do
+		if quest.Level <= level and not isBossQuest(quest) then
+			for _, targetName in next, Config.PreSea3Farm.QuestNames do
+				if quest.MobName == targetName and (not best or quest.Level > best.Level) then
+					best = quest
+				end
+			end
+		end
+	end
+
+	if best then
+		setStatus("PreSea3Farm", "active")
+		setStatus("PreSea3FarmIsland", Config.PreSea3Farm.IslandName)
+		setStatus("PreSea3FarmQuest", best.LevelName .. " " .. best.MobName)
+
+		return best, "pre_sea3_level_4200"
+	end
+
+	setStatus("PreSea3Farm", "no_quest")
+
+	return nil, "pre_sea3_no_quest"
+end
+
+function Config.PreSea3Farm.ShouldCancelQuest(objective, level)
+	if not Config.PreSea3Farm.IsActive(level) or objective == "" then
+		return false, nil
+	end
+
+	if Config.PreSea3Farm.IsQuestObjective(objective) then
+		return false, nil
+	end
+
+	return true, Config.PreSea3Farm.SelectQuest(level)
+end
+
 local function selectFarmQuest(level)
+	local preSea3Quest, preSea3Reason = Config.PreSea3Farm.SelectQuest(level)
+
+	if preSea3Quest then
+		setStatus("LastFarmQuestReason", preSea3Reason)
+
+		return preSea3Quest, preSea3Reason
+	end
+
 	local dragonQuest, dragonReason = Config.DragonIsland.SelectQuest(getLevel())
 
 	if dragonQuest then
@@ -2442,6 +2526,15 @@ end
 
 local function isAliveMob(model)
 	local humanoid = getHumanoid(model)
+	local npcWorkspace = workspace:FindFirstChild("Npc_Workspace")
+	local playersFolder = workspace:FindFirstChild("Players")
+
+	if model and (
+		(npcWorkspace and model:IsDescendantOf(npcWorkspace))
+		or (playersFolder and model:IsDescendantOf(playersFolder))
+	) then
+		return false
+	end
 
 	return model and model:IsDescendantOf(workspace) and humanoid and humanoid.Health > 0
 end
@@ -2519,6 +2612,27 @@ findMob = function(targetName)
 		if container and container:IsDescendantOf(workspace) then
 			scanContainer(container, 0)
 		end
+	end
+
+	-- Some boss spawns are replicated outside NPCS after activation.
+	if not closestMob then
+		local function scanWorkspace(container, depth)
+			if not container or depth > Config.MobSearchDepth + 2 then
+				return
+			end
+
+			for _, child in next, container:GetChildren() do
+				if child:IsA("Model") then
+					scanModel(child)
+				end
+
+				if child:IsA("Folder") or child:IsA("Model") then
+					scanWorkspace(child, depth + 1)
+				end
+			end
+		end
+
+		scanWorkspace(workspace, 0)
 	end
 
 	return closestMob
@@ -5479,6 +5593,8 @@ assert(type(refundStatsBeforeUpgrade) == "function", "stat refund helper missing
 assert(type(RefundStats.GetPoints) == "function", "refund point helper missing")
 assert(type(RefundStats.FireEvent) == "function", "stats refund event helper missing")
 assert(type(PriorityBoss.Handle) == "function", "priority boss handler missing")
+assert(type(Config.PreSea3Farm.SelectQuest) == "function", "pre sea3 farm selector missing")
+assert(type(Config.PreSea3Farm.ShouldCancelQuest) == "function", "pre sea3 quest cancel helper missing")
 assert(type(Config.DragonIsland.SelectQuest) == "function", "dragon island quest selector missing")
 assert(type(Config.DragonIsland.FindTargetForObjective) == "function", "dragon island split target helper missing")
 assert(type(Config.DragonIsland.HandleAwakenBoss) == "function", "dragon boss handler missing")
@@ -5501,6 +5617,8 @@ assert(
 )
 assert(type(Config.Sea3Gate.CheckRequiredSwords) == "function", "world 2 sea3 sword ownership helper missing")
 assert(type(Config.Sea3Gate.IsReady) == "function", "world 2 sea3 gate helper missing")
+assert(Config.PreSea3Farm.StartLevel == 4200 and Config.PreSea3Farm.EndLevel == 4800, "pre sea3 level 4200 farm lock missing")
+assert(Config.PreSea3Farm.IslandName == "Venom Island" and Config.PreSea3Farm.QuestNames[1] == "Venom Poacher", "pre sea3 venom island farm missing")
 assert(Config.EnmaBossPriority.BossName == "Enma Boss" and Config.EnmaBossPriority.SwordName == "Enma", "enma boss priority config missing")
 assert(Config.ZenithBossPriority.BossName == "Zenith Boss" and Config.ZenithBossPriority.SwordName == "Zenith", "zenith boss priority config missing")
 assert(Config.PriorityBosses[1] == Config.EnmaBossPriority and Config.PriorityBosses[2] == Config.ZenithBossPriority, "priority boss order missing")
@@ -5541,7 +5659,7 @@ task.spawn(function()
 			local level = getLevel()
 			local farmLevel = getFarmLevel(level)
 			local questState = getQuestState()
-			local objective = questState.Objective
+			local objective = questState.Objective ~= "" and questState.Objective or questState.NPCName
 			setStatus("Level", level)
 			setStatus("FarmLevel", farmLevel)
 			setStatus("ForceFarmLevelEnabled", Config.ForceFarmLevelEnabled)
@@ -5550,6 +5668,22 @@ task.spawn(function()
 			setStatus("ActiveQuestName", questState.QuestName)
 			setStatus("ActiveProgress", questState.Progress)
 			setStatus("ActiveTarget", questState.Target)
+
+			local preSea3QuestAtLevel = Config.PreSea3Farm.SelectQuest(level)
+
+			if preSea3QuestAtLevel
+				and objective ~= ""
+				and not Config.PreSea3Farm.IsQuestObjective(objective)
+			then
+				setStatus("PreSea3ActiveQuestOverride", objective)
+				setStatus("PreSea3ActiveQuestOverrideReason", "server_quest_not_cancellable")
+				CurrentQuest = preSea3QuestAtLevel
+				CurrentTarget = nil
+				PreviousObjective = ""
+				objective = preSea3QuestAtLevel.MobName
+				setStatus("ActiveObjective", objective)
+			end
+
 			local world2PostMax = Config.DragonIsland.IsPostMaxActive(level)
 			setStatus("World2Mode", world2PostMax and "post_max_4800" or "level_farm_until_4800")
 			setStatus("World2PostMaxActive", world2PostMax)
@@ -5622,6 +5756,36 @@ task.spawn(function()
 
 					if dragonQuest then
 						moveNearQuestSpawnPoint(dragonQuest, dragonQuest.MobName)
+					end
+
+					task.wait(0.35)
+				else
+					task.wait(0.5)
+				end
+
+				continue
+			end
+
+			local shouldCancelPreSea3Quest, preSea3Quest = Config.PreSea3Farm.ShouldCancelQuest(objective, level)
+
+			if shouldCancelPreSea3Quest then
+				local canceled, cancelResult = cancelActiveQuest("pre-sea3 level 4200 island")
+
+				setStatus("PreSea3CancelObjective", objective)
+				setStatus("PreSea3CancelQuest", preSea3Quest and (preSea3Quest.LevelName .. " " .. preSea3Quest.MobName) or nil)
+				setStatus("PreSea3CancelResult", tostring(cancelResult))
+
+				CurrentTarget = nil
+				ActiveBossFallbackQuest = nil
+
+				if canceled then
+					CurrentQuest = nil
+					PreviousObjective = ""
+					objective = ""
+					BossMissingSince = 0
+
+					if preSea3Quest then
+						moveNearQuestSpawnPoint(preSea3Quest, preSea3Quest.MobName)
 					end
 
 					task.wait(0.35)
