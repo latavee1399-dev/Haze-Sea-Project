@@ -5214,11 +5214,25 @@ local function fightRedEmperorTarget(target)
 end
 
 local function shouldRunSea3Unlock(level)
+	level = tonumber(level) or getLevel()
+
 	if not Config.Sea3Unlock then
 		return false
 	end
 
 	if game.PlaceId ~= 14979402479 then
+		return false
+	end
+
+	local levelReady = level >= Config.Sea3RequiredLevel
+	setStatus("Sea3GateLevel", level)
+	setStatus("Sea3RequiredLevel", Config.Sea3RequiredLevel)
+	setStatus("Sea3GateLevelReady", levelReady)
+
+	if not levelReady then
+		setStatus("Sea3UnlockEnabled", false)
+		setStatus("Sea3GateBlockReason", "level")
+
 		return false
 	end
 
@@ -6063,17 +6077,3 @@ task.spawn(function()
 
 				if questForProbe
 					and LastQuestAttackObjective ~= objective
-					and tick() - LastQuestObjectiveStart >= Config.MobSpawnProbeIdleDelay
-				then
-					CurrentTarget = select(1, probeQuestIslandForMob(questForProbe, objective, "quest_idle_no_attack")) or CurrentTarget
-					LastTargetSearch = tick()
-				end
-			end
-
-			task.wait(Config.LoopDelay)
-		end
-	end
-
-	CurrentTarget = nil
-	debugPrint("Stopped")
-end)
