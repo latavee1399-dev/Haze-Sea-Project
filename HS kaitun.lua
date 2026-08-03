@@ -224,6 +224,9 @@ local Array = {
 			TravelSpeed = 650,
 			TravelStepDelay = 0.015,
 			TravelMaxStep = 22,
+			SmoothTravelSpeed = 420,
+			SmoothTravelStepDelay = 0.025,
+			SmoothTravelMaxStep = 10,
 			SafePositionFloor = -10000,
 			PreferTool = "Combat",
 			PreferMelee = true,
@@ -888,7 +891,9 @@ Config.QuestIslandNames = Config.QuestIslandNames or {
 	["Venom Monster"] = "Venom Island",
 	["Venom Poacher"] = "Venom Island",
 	["Venom Boss"] = "Venom Island",
+	["Vergo"] = "Hot Island",
 }
+Config.QuestIslandNames["Vergo"] = "Hot Island"
 Config.QuestIslandLevelRanges = Config.QuestIslandLevelRanges or {
 	{ Min = 2200, Max = 2350, Island = "Flower Capital" },
 	{ Min = 2400, Max = 2500, Island = "Udon Prison" },
@@ -909,7 +914,20 @@ Config.QuestTravelPositions = Config.QuestTravelPositions or {
 	["Beast Pirate"] = Vector3.new(7278.083984375, 1120.350830078125, 7403.4150390625),
 	["Elite Beast"] = Vector3.new(7278.083984375, 1120.350830078125, 7403.4150390625),
 	["Dragon Boss"] = Vector3.new(7278.083984375, 1120.350830078125, 7403.4150390625),
+	["Vergo"] = Vector3.new(2000, 100, -3200),
 }
+Config.QuestTravelPositions["Vergo"] = Vector3.new(2000, 100, -3200)
+Config.PreSea3Farm = type(Config.PreSea3Farm) == "table" and Config.PreSea3Farm or {}
+Config.PreSea3Farm.Enabled = Config.PreSea3Farm.Enabled ~= false
+Config.PreSea3Farm.StartLevel = math.max(1, math.floor(tonumber(Config.PreSea3Farm.StartLevel) or 4200))
+Config.PreSea3Farm.EndLevel = math.max(
+	Config.PreSea3Farm.StartLevel,
+	math.floor(tonumber(Config.PreSea3Farm.EndLevel) or 4800)
+)
+Config.PreSea3Farm.IslandName = tostring(Config.PreSea3Farm.IslandName or "Venom Island")
+Config.PreSea3Farm.QuestNames = type(Config.PreSea3Farm.QuestNames) == "table" and Config.PreSea3Farm.QuestNames or {}
+Config.PreSea3Farm.QuestNames[1] = "Venom Poacher"
+Config.PreSea3Farm.QuestNames[2] = "Venom Monster"
 
 local function removeMobAlias(targetName, aliasName)
 	local aliases = Config.MobNameAliases[targetName]
@@ -2414,7 +2432,76 @@ local function getFallbackQuestForBossSafely(bossQuest)
 	return result
 end
 
+function Config.PreSea3Farm.IsActive(level)
+	level = tonumber(level) or getLevel()
+
+	return Config.PreSea3Farm.Enabled
+		and game.PlaceId == 14979402479
+		and level >= Config.PreSea3Farm.StartLevel
+		and level < Config.PreSea3Farm.EndLevel
+end
+
+function Config.PreSea3Farm.IsQuestObjective(objective)
+	for _, targetName in next, Config.PreSea3Farm.QuestNames do
+		if tostring(objective or "") == targetName then
+			return true
+		end
+	end
+
+	return false
+end
+
+function Config.PreSea3Farm.SelectQuest(level)
+	if not Config.PreSea3Farm.IsActive(level) then
+		return nil, nil
+	end
+
+	local best = nil
+
+	for _, quest in next, getQuestCache(false) do
+		if quest.Level <= level and not isBossQuest(quest) then
+			for _, targetName in next, Config.PreSea3Farm.QuestNames do
+				if quest.MobName == targetName and (not best or quest.Level > best.Level) then
+					best = quest
+				end
+			end
+		end
+	end
+
+	if best then
+		setStatus("PreSea3Farm", "active")
+		setStatus("PreSea3FarmIsland", Config.PreSea3Farm.IslandName)
+		setStatus("PreSea3FarmQuest", best.LevelName .. " " .. best.MobName)
+
+		return best, "pre_sea3_level_4200"
+	end
+
+	setStatus("PreSea3Farm", "no_quest")
+
+	return nil, "pre_sea3_no_quest"
+end
+
+function Config.PreSea3Farm.ShouldCancelQuest(objective, level)
+	if not Config.PreSea3Farm.IsActive(level) or objective == "" then
+		return false, nil
+	end
+
+	if Config.PreSea3Farm.IsQuestObjective(objective) then
+		return false, nil
+	end
+
+	return true, Config.PreSea3Farm.SelectQuest(level)
+end
+
 local function selectFarmQuest(level)
+	local preSea3Quest, preSea3Reason = Config.PreSea3Farm.SelectQuest(level)
+
+	if preSea3Quest then
+		setStatus("LastFarmQuestReason", preSea3Reason)
+
+		return preSea3Quest, preSea3Reason
+	end
+
 	local dragonQuest, dragonReason = Config.DragonIsland.SelectQuest(getLevel())
 
 	if dragonQuest then
@@ -2938,6 +3025,15 @@ end
 
 local function isAliveMob(model)
 	local humanoid = getHumanoid(model)
+	local npcWorkspace = workspace:FindFirstChild("Npc_Workspace")
+	local playersFolder = workspace:FindFirstChild("Players")
+
+	if model and (
+		(npcWorkspace and model:IsDescendantOf(npcWorkspace))
+		or (playersFolder and model:IsDescendantOf(playersFolder))
+	) then
+		return false
+	end
 
 	return model and model:IsDescendantOf(workspace) and humanoid and humanoid.Health > 0
 end
@@ -3015,6 +3111,27 @@ findMob = function(targetName)
 		if container and container:IsDescendantOf(workspace) then
 			scanContainer(container, 0)
 		end
+	end
+
+	-- Some boss spawns are replicated outside NPCS after activation.
+	if not closestMob then
+		local function scanWorkspace(container, depth)
+			if not container or depth > Config.MobSearchDepth + 2 then
+				return
+			end
+
+			for _, child in next, container:GetChildren() do
+				if child:IsA("Model") then
+					scanModel(child)
+				end
+
+				if child:IsA("Folder") or child:IsA("Model") then
+					scanWorkspace(child, depth + 1)
+				end
+			end
+		end
+
+		scanWorkspace(workspace, 0)
 	end
 
 	return closestMob
@@ -5970,6 +6087,8 @@ assert(type(refundStatsBeforeUpgrade) == "function", "stat refund helper missing
 assert(type(RefundStats.GetPoints) == "function", "refund point helper missing")
 assert(type(RefundStats.FireEvent) == "function", "stats refund event helper missing")
 assert(type(PriorityBoss.Handle) == "function", "priority boss handler missing")
+assert(type(Config.PreSea3Farm.SelectQuest) == "function", "pre sea3 farm selector missing")
+assert(type(Config.PreSea3Farm.ShouldCancelQuest) == "function", "pre sea3 quest cancel helper missing")
 assert(type(Config.DragonIsland.SelectQuest) == "function", "dragon island quest selector missing")
 assert(type(Config.DragonIsland.FindTargetForObjective) == "function", "dragon island split target helper missing")
 assert(type(Config.DragonIsland.HandleAwakenBoss) == "function", "dragon boss handler missing")
@@ -5992,6 +6111,8 @@ assert(
 )
 assert(type(Config.Sea3Gate.CheckRequiredSwords) == "function", "world 2 sea3 sword helper missing")
 assert(type(Config.Sea3Gate.IsReady) == "function", "world 2 sea3 gate helper missing")
+assert(Config.PreSea3Farm.StartLevel == 4200 and Config.PreSea3Farm.EndLevel == 4800, "pre sea3 level 4200 farm lock missing")
+assert(Config.PreSea3Farm.IslandName == "Venom Island" and Config.PreSea3Farm.QuestNames[1] == "Venom Poacher", "pre sea3 venom island farm missing")
 assert(Config.EnmaBossPriority.BossName == "Enma Boss" and Config.EnmaBossPriority.SwordName == "Enma", "enma boss priority config missing")
 assert(Config.ZenithBossPriority.BossName == "Zenith Boss" and Config.ZenithBossPriority.SwordName == "Zenith", "zenith boss priority config missing")
 assert(Config.PriorityBosses[1] == Config.EnmaBossPriority and Config.PriorityBosses[2] == Config.ZenithBossPriority, "priority boss order missing")
@@ -6031,7 +6152,7 @@ task.spawn(function()
 			local level = getLevel()
 			local farmLevel = getFarmLevel(level)
 			local questState = getQuestState()
-			local objective = questState.Objective
+			local objective = questState.Objective ~= "" and questState.Objective or questState.NPCName
 			setStatus("Level", level)
 			setStatus("FarmLevel", farmLevel)
 			setStatus("ForceFarmLevelEnabled", Config.ForceFarmLevelEnabled)
@@ -6040,6 +6161,22 @@ task.spawn(function()
 			setStatus("ActiveQuestName", questState.QuestName)
 			setStatus("ActiveProgress", questState.Progress)
 			setStatus("ActiveTarget", questState.Target)
+
+			local preSea3QuestAtLevel = Config.PreSea3Farm.SelectQuest(level)
+
+			if preSea3QuestAtLevel
+				and objective ~= ""
+				and not Config.PreSea3Farm.IsQuestObjective(objective)
+			then
+				setStatus("PreSea3ActiveQuestOverride", objective)
+				setStatus("PreSea3ActiveQuestOverrideReason", "server_quest_not_cancellable")
+				CurrentQuest = preSea3QuestAtLevel
+				CurrentTarget = nil
+				PreviousObjective = ""
+				objective = preSea3QuestAtLevel.MobName
+				setStatus("ActiveObjective", objective)
+			end
+
 			local world2PostMax = Config.DragonIsland.IsPostMaxActive(level)
 			setStatus("World2Mode", world2PostMax and "post_max_4800" or "level_farm_until_4800")
 			setStatus("World2PostMaxActive", world2PostMax)
@@ -6112,6 +6249,36 @@ task.spawn(function()
 
 					if dragonQuest then
 						moveNearQuestSpawnPoint(dragonQuest, dragonQuest.MobName)
+					end
+
+					task.wait(0.35)
+				else
+					task.wait(0.5)
+				end
+
+				continue
+			end
+
+			local shouldCancelPreSea3Quest, preSea3Quest = Config.PreSea3Farm.ShouldCancelQuest(objective, level)
+
+			if shouldCancelPreSea3Quest then
+				local canceled, cancelResult = cancelActiveQuest("pre-sea3 level 4200 island")
+
+				setStatus("PreSea3CancelObjective", objective)
+				setStatus("PreSea3CancelQuest", preSea3Quest and (preSea3Quest.LevelName .. " " .. preSea3Quest.MobName) or nil)
+				setStatus("PreSea3CancelResult", tostring(cancelResult))
+
+				CurrentTarget = nil
+				ActiveBossFallbackQuest = nil
+
+				if canceled then
+					CurrentQuest = nil
+					PreviousObjective = ""
+					objective = ""
+					BossMissingSince = 0
+
+					if preSea3Quest then
+						moveNearQuestSpawnPoint(preSea3Quest, preSea3Quest.MobName)
 					end
 
 					task.wait(0.35)
@@ -6684,6 +6851,18 @@ Array.Config.AutoFarm.FastTravel = Array.Config.AutoFarm.FastTravel ~= false
 Array.Config.AutoFarm.TravelSpeed = math.max(tonumber(Array.Config.AutoFarm.TravelSpeed) or 650, 50)
 Array.Config.AutoFarm.TravelStepDelay = math.max(tonumber(Array.Config.AutoFarm.TravelStepDelay) or 0.015, 0.01)
 Array.Config.AutoFarm.TravelMaxStep = math.max(tonumber(Array.Config.AutoFarm.TravelMaxStep) or 22, 1)
+Array.Config.AutoFarm.SmoothTravelSpeed = math.max(
+	tonumber(Array.Config.AutoFarm.SmoothTravelSpeed) or 420,
+	100
+)
+Array.Config.AutoFarm.SmoothTravelStepDelay = math.max(
+	tonumber(Array.Config.AutoFarm.SmoothTravelStepDelay) or 0.025,
+	0.015
+)
+Array.Config.AutoFarm.SmoothTravelMaxStep = math.max(
+	tonumber(Array.Config.AutoFarm.SmoothTravelMaxStep) or 10,
+	4
+)
 Array.Config.AutoFarm.SafePositionFloor = tonumber(Array.Config.AutoFarm.SafePositionFloor) or -10000
 Array.Config.AutoFarm.PreferTool = "Combat"
 Array.Config.AutoFarm.PreferMelee = Array.Config.AutoFarm.PreferMelee ~= false
@@ -6743,6 +6922,9 @@ Array.Config.AutoFarm.QuestAcceptAttempts = math.max(1, math.floor(tonumber(Arra
 Array.Config.AutoFarm.QuestAcceptRetryDelay = math.max(tonumber(Array.Config.AutoFarm.QuestAcceptRetryDelay) or 0.15, 0.05)
 Array.Config.AutoFarm.QuestCacheRefresh = math.max(tonumber(Array.Config.AutoFarm.QuestCacheRefresh) or 30, 5)
 Array.Config.AutoFarm.MobSearchDepth = math.max(1, math.floor(tonumber(Array.Config.AutoFarm.MobSearchDepth) or 7))
+Array.Config.AutoFarm.VergoTravelCFrame = typeof(Array.Config.AutoFarm.VergoTravelCFrame) == "CFrame"
+	and Array.Config.AutoFarm.VergoTravelCFrame
+	or CFrame.new(2000, 100, -3200)
 Array.Config.AutoFarm.BossFallback = Array.Config.AutoFarm.BossFallback ~= false
 Array.Config.AutoFarm.BossFallbackDelay = math.max(tonumber(Array.Config.AutoFarm.BossFallbackDelay) or 2, 0)
 Array.Config.AutoFarm.BossFallbackSameGiver = Array.Config.AutoFarm.BossFallbackSameGiver ~= false
@@ -6901,7 +7083,7 @@ for Key, Value in next, {
 	Monkey = "Tall Woods",
 	Gorilla = "Tall Woods",
 	["King Gorilla"] = "Tall Woods",
-	Vergo = "Punk Hazard",
+	Vergo = "Hot Island",
 	["Marine Grunt"] = "Marine Base Town",
 	["Marine Captain"] = "Marine Base Town",
 } do
@@ -6927,7 +7109,7 @@ for Key, Value in next, {
 	Monkey = "Tall Woods",
 	Gorilla = "Tall Woods",
 	["King Gorilla"] = "Tall Woods",
-	Vergo = "Punk Hazard",
+	Vergo = "Hot Island",
 	["Marine Grunt"] = "Marine Base Town",
 	["Marine Captain"] = "Marine Base Town",
 	Samurai = "Flower Capital",
@@ -6987,6 +7169,8 @@ for Key, Value in next, {
 		Array.Config.AutoFarm.QuestIslandNames[Key] = Value
 	end
 end
+Array.Config.AutoFarm.QuestZoneNames.Vergo = "Hot Island"
+Array.Config.AutoFarm.QuestIslandNames.Vergo = "Hot Island"
 -- Snow Harpy is discovered from NPC Zones because its World 1 island is not stable across map revisions.
 Array.Config.AutoFarm.QuestIslandNames["Snow Harpy"] = nil
 Array.Config.AutoFarm.QuestIslandLevelRanges = type(Array.Config.AutoFarm.QuestIslandLevelRanges) == "table" and Array.Config.AutoFarm.QuestIslandLevelRanges or {
@@ -9549,12 +9733,29 @@ function Array.Function.StepBypassTeleportToCFrame(TargetCFrame)
 		return Array.Function.DirectTeleportToCFrame(TargetCFrame)
 	end
 
+	Array.State.SmoothBypassEnabled = Array.Config.AutoFarm.SmoothTravel == true
+	Array.State.SmoothBypassSpeed = Array.State.SmoothBypassEnabled
+		and Array.Config.AutoFarm.SmoothTravelSpeed
+		or Array.Config.BypassTeleportSpeed
+	Array.State.SmoothBypassStepDelay = Array.State.SmoothBypassEnabled
+		and Array.Config.AutoFarm.SmoothTravelStepDelay
+		or Array.Config.BypassTeleportStepDelay
+	Array.State.SmoothBypassMaxStep = Array.State.SmoothBypassEnabled
+		and Array.Config.AutoFarm.SmoothTravelMaxStep
+		or Array.Config.BypassTeleportMaxStep
+
 	Array.State.BypassTargetCFrame = TargetCFrame
 	Array.State.BypassTargetRotation = TargetCFrame.Rotation
 	Array.State.BypassStartedAt = os.clock()
+	Array.State.BypassTimeout = math.max(
+		Array.Config.BypassTeleportVelocityTimeout,
+		((TargetCFrame.Position - Array.State.RootPart.Position).Magnitude / Array.State.SmoothBypassSpeed)
+			+ Array.Config.BypassTeleportVelocityTimeoutBuffer
+			+ 1
+	)
 	Array.State.BypassStepDistance = math.min(
-		Array.Config.BypassTeleportMaxStep,
-		math.max(4, Array.Config.BypassTeleportSpeed * Array.Config.BypassTeleportStepDelay)
+		Array.State.SmoothBypassMaxStep,
+		math.max(4, Array.State.SmoothBypassSpeed * Array.State.SmoothBypassStepDelay)
 	)
 
 	Array.Function.SetStatus("BypassTeleport", "moving")
@@ -9581,15 +9782,27 @@ function Array.Function.StepBypassTeleportToCFrame(TargetCFrame)
 		Array.State.BypassNextPosition = Array.State.RootPart.Position + (Array.State.BypassDirection * Array.State.BypassStepDistance)
 		Array.State.RootPart.CFrame = CFrame.new(Array.State.BypassNextPosition) * Array.State.BypassTargetRotation
 		Array.Function.ZeroCharacterVelocity()
-		task.wait(Array.Config.BypassTeleportStepDelay)
+		task.wait(Array.State.SmoothBypassStepDelay)
 	until not Array.Function.IsRunning()
+		or os.clock() - Array.State.BypassStartedAt >= Array.State.BypassTimeout
 
-	Array.State.RootPart.CFrame = Array.State.BypassTargetCFrame
+	if not Array.State.SmoothBypassEnabled then
+		Array.State.RootPart.CFrame = Array.State.BypassTargetCFrame
+	end
 	Array.Function.ZeroCharacterVelocity()
 	task.wait(Array.Config.BypassTeleportSettleDelay)
 
 	if Array.Config.BypassTeleportNoClip and Array.Config.BypassTeleportRestoreCollision then
 		Array.Function.RestoreCharacterCollision()
+	end
+
+	if (Array.State.RootPart.Position - TargetCFrame.Position).Magnitude > math.max(
+		Array.Config.BypassTeleportVelocityReachDistance,
+		Array.Config.BypassTeleportFinalSnapDistance
+	) then
+		Array.Function.SetStatus("BypassTeleport", "step_timeout")
+
+		return false
 	end
 
 	Array.Function.SetStatus("BypassTeleport", "done")
@@ -11138,6 +11351,26 @@ function Array.Function.ShouldSwitchFarmQuest(CurrentQuest, ExpectedQuest, Expec
 	Array.State.CurrentQuestIsBoss = Array.Function.IsBossQuest(CurrentQuest)
 	Array.State.ExpectedQuestIsBoss = Array.Function.IsBossQuest(ExpectedQuest)
 
+	-- A spawned boss quest can be lower than the normal level quest. Keep it active
+	-- while the actual boss is alive instead of trying to replace it.
+	if Array.State.CurrentQuestIsBoss and not Array.State.ExpectedQuestIsBoss then
+		Array.State.SpawnedCurrentBoss = Array.State.CurrentTarget
+
+		if not Array.State.SpawnedCurrentBoss
+			or not Array.Function.IsAliveMob(Array.State.SpawnedCurrentBoss)
+			or not Array.Function.MatchesMob(Array.State.SpawnedCurrentBoss, CurrentQuest.MobName)
+		then
+			Array.State.SpawnedCurrentBoss = Array.Function.FindMob(CurrentQuest.MobName)
+		end
+
+		if Array.State.SpawnedCurrentBoss then
+			Array.Function.SetAutoFarmStatus("QuestSwitch", "keep_spawned_boss")
+			Array.Function.SetAutoFarmStatus("QuestSwitchBoss", Array.State.SpawnedCurrentBoss.Name)
+
+			return false
+		end
+	end
+
 	if Array.Config.AutoFarm.BossFallbackFinishCurrentQuest
 		and not Array.State.CurrentQuestIsBoss
 		and Array.State.ExpectedQuestIsBoss
@@ -11369,6 +11602,15 @@ end
 function Array.Function.IsAliveMob(Mob)
 	Array.State.MobHumanoid = Array.Function.GetMobHumanoid(Mob)
 	Array.State.MobRoot = Array.Function.GetMobRoot(Mob)
+	Array.State.NpcWorkspace = workspace:FindFirstChild("Npc_Workspace")
+	Array.State.PlayersFolder = workspace:FindFirstChild("Players")
+
+	if Mob and (
+		(Array.State.NpcWorkspace and Mob:IsDescendantOf(Array.State.NpcWorkspace))
+		or (Array.State.PlayersFolder and Mob:IsDescendantOf(Array.State.PlayersFolder))
+	) then
+		return false
+	end
 
 	return Mob
 		and Mob:IsA("Model")
@@ -11986,6 +12228,55 @@ function Array.Function.TravelToCFrame(Destination)
 		return Array.State.World3TravelSuccess
 	end
 
+	Array.Function.GetCharacter()
+
+	if Array.Config.AutoFarm.SmoothTravel
+		and Array.Config.BypassTeleport
+		and Array.State.RootPart
+		and (Array.State.RootPart.Position - Destination.Position).Magnitude > Array.Config.AutoFarm.DirectLockDistance
+	then
+		Array.State.CurrentTraveling = true
+		Array.Function.SetAutoFarmStatus("LastTravelDestination", tostring(Destination.Position))
+		Array.State.SmoothTravelSuccess = Array.Function.StepBypassTeleportToCFrame(Destination)
+		Array.State.CurrentTraveling = false
+
+		if Array.State.SmoothTravelSuccess then
+			Array.Function.SetAutoFarmStatus("LastTravelResult", "smooth_step")
+
+			return true
+		end
+	end
+
+	if not Array.Config.AutoFarm.SmoothTravel
+		and Array.Config.BypassTeleport
+		and Array.State.RootPart
+		and (Array.State.RootPart.Position - Destination.Position).Magnitude > Array.Config.AutoFarm.DirectLockDistance
+	then
+		Array.State.CurrentTraveling = true
+		Array.Function.SetAutoFarmStatus("LastTravelDestination", tostring(Destination.Position))
+		Array.State.BypassTravelSuccess = Array.Function.BypassTeleportToCFrame(Destination)
+
+		if Array.State.BypassTravelSuccess then
+			Array.State.CurrentTraveling = false
+			Array.Function.SetAutoFarmStatus("LastTravelResult", "bypass")
+
+			return true
+		end
+
+		-- Velocity movement can be rejected by the live client. Fall back to the
+		-- existing stepped bypass so a target is still reachable on World 1.
+		Array.State.StepBypassTravelSuccess = Array.Function.StepBypassTeleportToCFrame(Destination)
+		Array.State.CurrentTraveling = false
+
+		if Array.State.StepBypassTravelSuccess then
+			Array.Function.SetAutoFarmStatus("LastTravelResult", "bypass_step")
+
+			return true
+		end
+
+		Array.State.CurrentTraveling = false
+	end
+
 	if not Array.Config.AutoFarm.SmoothTravel then
 		return Array.Function.SetCharacterCFrame(Destination)
 	end
@@ -12193,6 +12484,15 @@ end
 function Array.Function.IsAliveMob(Mob)
 	Array.State.MobHumanoid = Array.Function.GetMobHumanoid(Mob)
 	Array.State.MobRoot = Array.Function.GetMobRoot(Mob)
+	Array.State.NpcWorkspace = workspace:FindFirstChild("Npc_Workspace")
+	Array.State.PlayersFolder = workspace:FindFirstChild("Players")
+
+	if Mob and (
+		(Array.State.NpcWorkspace and Mob:IsDescendantOf(Array.State.NpcWorkspace))
+		or (Array.State.PlayersFolder and Mob:IsDescendantOf(Array.State.PlayersFolder))
+	) then
+		return false
+	end
 
 	return Mob
 		and Mob:IsDescendantOf(workspace)
@@ -12728,6 +13028,8 @@ end
 
 function Array.Function.CollectQuestScanCFrames(Quest, TargetName)
 	Array.State.QuestScanCache = type(Array.State.QuestScanCache) == "table" and Array.State.QuestScanCache or {}
+	Array.State.IsVergoQuestScan = game.PlaceId == Array.Config.PlaceId.World1
+		and Array.Function.NormalizeLookupName(TargetName or (Quest and Quest.MobName) or "") == "vergo"
 	Array.State.QuestScanCacheKey = table.concat({
 		tostring(game.PlaceId),
 		tostring(Quest and Quest.Level or ""),
@@ -12737,7 +13039,8 @@ function Array.Function.CollectQuestScanCFrames(Quest, TargetName)
 	}, ":")
 	Array.State.QuestScanCacheEntry = Array.State.QuestScanCache[Array.State.QuestScanCacheKey]
 
-	if Array.State.QuestScanCacheEntry
+	if not Array.State.IsVergoQuestScan
+		and Array.State.QuestScanCacheEntry
 		and os.clock() - Array.State.QuestScanCacheEntry.CreatedAt < Array.Config.AutoFarm.MobSpawnProbeScanCacheDuration
 		and (not Array.State.QuestScanCacheEntry.IslandFolder
 			or Array.State.QuestScanCacheEntry.IslandFolder:IsDescendantOf(workspace))
@@ -12754,6 +13057,14 @@ function Array.Function.CollectQuestScanCFrames(Quest, TargetName)
 	Array.Function.SetAutoFarmStatus("LastQuestIslandScanCache", "miss")
 	Array.State.QuestScanCFrames = {}
 
+	if game.PlaceId == Array.Config.PlaceId.World1
+		and Array.Function.NormalizeLookupName(TargetName or (Quest and Quest.MobName) or "") == "vergo"
+	then
+		table.insert(Array.State.QuestScanCFrames, Array.Config.AutoFarm.VergoTravelCFrame)
+		Array.State.QuestScanSource = "vergo_hot_island_position"
+		Array.Function.SetAutoFarmStatus("VergoTravelTarget", tostring(Array.Config.AutoFarm.VergoTravelCFrame.Position))
+	end
+
 	local function SaveQuestScanCache()
 		Array.State.QuestScanCache[Array.State.QuestScanCacheKey] = {
 			CreatedAt = os.clock(),
@@ -12769,7 +13080,7 @@ function Array.Function.CollectQuestScanCFrames(Quest, TargetName)
 
 	Array.Function.AppendCFrameScanPoints(Array.State.QuestScanCFrames, Array.State.DynamicQuestScanCFrames)
 
-	if #Array.State.QuestScanCFrames > 0 then
+	if #Array.State.DynamicQuestScanCFrames > 0 then
 		Array.State.QuestScanIslandFolder = Array.State.DynamicQuestScanZone
 		Array.State.QuestScanTargetPoint = nil
 		Array.State.QuestScanSource = "npc_zone_target_first"
@@ -12993,6 +13304,17 @@ function Array.Function.ProbeQuestIslandForMob(Quest, TargetName, Reason)
 		if Array.State.ProbeTargetCFrame then
 			Array.State.ProbeMoveCFrame = Array.State.ProbeTargetCFrame + Vector3.new(0, Array.Config.AutoFarm.HoverHeight, 0)
 
+			if game.PlaceId == Array.Config.PlaceId.World1
+				and Array.Function.NormalizeLookupName(Array.State.ProbeTargetName) == "vergo"
+			then
+				local character = Array.Service.Player.Character
+				local location = character and character:FindFirstChild("Location")
+
+				if location and location:IsA("StringValue") then
+					location.Value = "Hot Island"
+				end
+			end
+
 			if game.PlaceId == Array.Config.PlaceId.World3 and Array.Config.BypassTeleport then
 				Array.Function.BypassTeleportToCFrame(Array.State.ProbeMoveCFrame)
 			else
@@ -13059,6 +13381,33 @@ function Array.Function.GetQuestTargetProbe(Quest)
 end
 
 function Array.Function.MoveNearQuestTargetArea(Quest, TargetName)
+	if game.PlaceId == Array.Config.PlaceId.World1
+		and Array.Function.NormalizeLookupName(TargetName or (Quest and Quest.MobName) or "") == "vergo"
+	then
+		Array.Function.SetAutoFarmStatus("LastTargetAreaQuest", "Vergo")
+		Array.Function.SetAutoFarmStatus("LastTargetAreaProbe", "vergo_hot_island_position")
+		Array.State.LastVergoTravelAt = Array.State.LastVergoTravelAt or 0
+
+		if os.clock() - Array.State.LastVergoTravelAt >= 2 then
+			Array.State.LastVergoTravelAt = os.clock()
+			local moved = Array.Function.SetCharacterCFrame(
+				Array.Config.AutoFarm.VergoTravelCFrame + Vector3.new(0, Array.Config.AutoFarm.HoverHeight, 0)
+			)
+			local character = Array.Service.Player.Character
+			local location = character and character:FindFirstChild("Location")
+
+			if location and location:IsA("StringValue") then
+				location.Value = "Hot Island"
+			end
+
+			Array.Function.RefreshNpcContainers(true)
+
+			return moved
+		end
+
+		return true
+	end
+
 	Array.State.QuestTargetProbe, Array.State.QuestTargetProbeReason = Array.Function.GetQuestTargetProbe(Quest)
 
 	if Array.State.QuestTargetProbe and Array.State.QuestTargetProbeReason == "matching_zone_mob" then
@@ -15371,7 +15720,7 @@ assert(#Array.Config.AutoFarm.BlackLegSkillKeys > 0, "black leg skill key config
 assert(Array.Config.AutoFarm.BossFallbackFinishCurrentQuest == true or Array.Config.AutoFarm.BossFallbackFinishCurrentQuest == false, "boss fallback finish quest config missing")
 assert(Array.Config.AutoFarm.BossFallbackSkipMissingProbe == true or Array.Config.AutoFarm.BossFallbackSkipMissingProbe == false, "boss fallback missing probe guard config missing")
 assert(game.PlaceId ~= Array.Config.PlaceId.World1 or Array.Config.AutoFarm.BossFallbackSkipMissingProbe == false, "world 1 boss spawn probe disabled")
-assert(Array.Config.AutoFarm.QuestIslandNames.Vergo == "Punk Hazard", "vergo quest island missing")
+assert(Array.Config.AutoFarm.QuestIslandNames.Vergo == "Hot Island", "vergo quest island missing")
 assert(Array.Config.AutoFarm.QuestIslandNames["Snow Harpy"] == nil, "snow harpy must use dynamic island discovery")
 assert(game.PlaceId ~= Array.Config.PlaceId.World1 or Array.Config.AutoFarm.World1IslandSweep == true, "world 1 island sweep disabled")
 assert(type(Array.Function.CollectQuestScanCFrames) == "function", "world 1 island sweep collector missing")
