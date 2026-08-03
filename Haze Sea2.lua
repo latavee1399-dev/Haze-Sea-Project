@@ -63,6 +63,7 @@ end
 
 Config.Enabled = true
 Config.RunId = RunId
+Config.PostMaxReturn = Config.PostMaxReturn == true or _G.HSKaitunPostMaxWorld2 == true
 Config.MultiClientOptimize = Config.MultiClientOptimize ~= false
 Config.QueueSea3Source = type(Config.QueueSea3Source) == "string" and Config.QueueSea3Source or ""
 Config.QueueSea3Urls = type(Config.QueueSea3Urls) == "table" and Config.QueueSea3Urls or {
@@ -3754,6 +3755,10 @@ end
 function Config.DragonIsland.IsPostMaxActive(level)
 	level = tonumber(level) or getLevel()
 
+	if Config.PostMaxReturn then
+		return true
+	end
+
 	local postMaxActive = Config.DragonIslandLock.PostMaxEnabled
 		and game.PlaceId == 14979402479
 		and level >= Config.DragonIslandLock.PostMaxLevel
@@ -5236,6 +5241,13 @@ local function shouldRunSea3Unlock(level)
 		return false
 	end
 
+	if Config.PostMaxReturn then
+		setStatus("Sea3UnlockEnabled", false)
+		setStatus("Sea3GateBlockReason", "post_max_island_boss")
+
+		return false
+	end
+
 	if Config.DragonIsland.IsPostMaxActive(level) then
 		setStatus("Sea3UnlockEnabled", false)
 		setStatus("Sea3GateBlockReason", "world2_post_max_farm")
@@ -6077,3 +6089,17 @@ task.spawn(function()
 
 				if questForProbe
 					and LastQuestAttackObjective ~= objective
+					and tick() - LastQuestObjectiveStart >= Config.MobSpawnProbeIdleDelay
+				then
+					CurrentTarget = select(1, probeQuestIslandForMob(questForProbe, objective, "quest_idle_no_attack")) or CurrentTarget
+					LastTargetSearch = tick()
+				end
+			end
+
+			task.wait(Config.LoopDelay)
+		end
+	end
+
+	CurrentTarget = nil
+	debugPrint("Stopped")
+end)
