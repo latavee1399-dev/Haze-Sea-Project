@@ -460,12 +460,40 @@ pcall(function()
 		return nil
 	end
 
+	local function PatchPostMaxWorld2Source(Source)
+		if not _G.HSKaitunPostMaxWorld2 or type(Source) ~= "string" then
+			return Source
+		end
+
+		local dragonSignature = "function Config.DragonIsland.IsPostMaxActive(level)"
+		local dragonIndex = string.find(Source, dragonSignature, 1, true)
+
+		if dragonIndex then
+			local insertAt = dragonIndex + #dragonSignature
+			Source = string.sub(Source, 1, insertAt)
+				.. "\n\tif _G.HSKaitunPostMaxWorld2 == true then\n\t\treturn true\n\tend\n"
+				.. string.sub(Source, insertAt + 1)
+		end
+
+		local sea3Signature = "local function shouldRunSea3Unlock(level)"
+		local sea3Index = string.find(Source, sea3Signature, 1, true)
+
+		if sea3Index then
+			local insertAt = sea3Index + #sea3Signature
+			Source = string.sub(Source, 1, insertAt)
+				.. "\n\tif _G.HSKaitunPostMaxWorld2 == true then\n\t\treturn false\n\tend\n"
+				.. string.sub(Source, insertAt + 1)
+		end
+
+		return Source
+	end
+
 	for _, Url in next, _G.HSKaitunQueueUrls do
 		if _G.HSKaitunReloaded then
 			break
 		end
 
-		_G.HSKaitunQueueSource = FetchUrl(Url)
+		_G.HSKaitunQueueSource = PatchPostMaxWorld2Source(FetchUrl(Url))
 
 		if type(_G.HSKaitunQueueSource) == "string"
 			and #_G.HSKaitunQueueSource > 0
@@ -486,7 +514,7 @@ pcall(function()
 				break
 			end
 
-			_G.HSKaitunWorld2QueueSource = FetchUrl(Url)
+			_G.HSKaitunWorld2QueueSource = PatchPostMaxWorld2Source(FetchUrl(Url))
 
 			if IsWorld2Source(_G.HSKaitunWorld2QueueSource) then
 				_G.HSKaitunWorld2QueueChunk = loadstring(_G.HSKaitunWorld2QueueSource)
@@ -562,6 +590,7 @@ end
 
 Config.Enabled = true
 Config.RunId = RunId
+Config.PostMaxReturn = Config.PostMaxReturn == true or _G.HSKaitunPostMaxWorld2 == true
 Config.MultiClientOptimize = Config.MultiClientOptimize ~= false
 Config.QueueSea3Source = type(Config.QueueSea3Source) == "string" and Config.QueueSea3Source or ""
 Config.QueueSea3Urls = type(Config.QueueSea3Urls) == "table" and Config.QueueSea3Urls or {
@@ -4248,6 +4277,10 @@ end
 function Config.DragonIsland.IsPostMaxActive(level)
 	level = tonumber(level) or getLevel()
 
+	if Config.PostMaxReturn then
+		return true
+	end
+
 	local postMaxActive = Config.DragonIslandLock.PostMaxEnabled
 		and game.PlaceId == 14979402479
 		and level >= Config.DragonIslandLock.PostMaxLevel
@@ -5708,11 +5741,32 @@ local function fightRedEmperorTarget(target)
 end
 
 local function shouldRunSea3Unlock(level)
+	level = tonumber(level) or getLevel()
+
 	if not Config.Sea3Unlock then
 		return false
 	end
 
 	if game.PlaceId ~= 14979402479 then
+		return false
+	end
+
+	local levelReady = level >= Config.Sea3RequiredLevel
+	setStatus("Sea3GateLevel", level)
+	setStatus("Sea3RequiredLevel", Config.Sea3RequiredLevel)
+	setStatus("Sea3GateLevelReady", levelReady)
+
+	if not levelReady then
+		setStatus("Sea3UnlockEnabled", false)
+		setStatus("Sea3GateBlockReason", "level")
+
+		return false
+	end
+
+	if Config.PostMaxReturn then
+		setStatus("Sea3UnlockEnabled", false)
+		setStatus("Sea3GateBlockReason", "post_max_island_boss")
+
 		return false
 	end
 
@@ -7339,7 +7393,7 @@ function Array.Function.GetQueueSource()
 	return Array.QueueCode
 end
 
-function Array.Function.QueueTargetRunner()
+function Array.Function.QueueTargetRunner(Prefix, SourceOverride)
 	if Array.State.Queued then
 		return true
 	end
@@ -7352,8 +7406,14 @@ function Array.Function.QueueTargetRunner()
 		return false
 	end
 
+	Array.State.QueueSourceForTeleport = SourceOverride or Array.Function.GetQueueSource()
+
+	if type(Prefix) == "string" and Prefix ~= "" then
+		Array.State.QueueSourceForTeleport = Prefix .. "\n" .. Array.State.QueueSourceForTeleport
+	end
+
 	Array.State.QueueSuccess = pcall(function()
-		Array.State.QueueOnTeleport(Array.Function.GetQueueSource())
+		Array.State.QueueOnTeleport(Array.State.QueueSourceForTeleport)
 	end)
 
 	Array.Function.SetStatus("QueueOnTeleport", Array.State.QueueSuccess and "queued" or "failed")
@@ -7426,6 +7486,8 @@ function Array.Function.ConfigureWorld2AutoFarm()
 	Array.State.World2AutoFarmConfig.PreferMelee = true
 	Array.State.World2AutoFarmConfig.Debug = Array.Config.Debug == true
 	Array.State.World2AutoFarmConfig.QueueSea3Source = Array.Function.GetQueueSource()
+	Array.State.World2AutoFarmConfig.PostMaxReturn =
+		Array.State.World2AutoFarmConfig.PostMaxReturn == true or _G.HSKaitunPostMaxWorld2 == true
 
 	Array.Function.SetStatus("World2AutoFarmTool", Array.State.World2AutoFarmConfig.PreferTool)
 	Array.Function.SetStatus("World2AutoFarmStats", table.concat(Array.State.World2AutoFarmConfig.StatOrder, ">"))
@@ -8216,6 +8278,22 @@ function Array.Function.InvokeWorld3ShrineUnlockRemote()
 		return false
 	end
 
+	if Array.Function.HasWorld3ShrineReward() then
+		Array.Function.SetStatus("World3ShrineUnlock", "already_owned")
+
+		return false
+	end
+
+	if Array.State.World3ShrineUnlockLastAt
+		and os.clock() - Array.State.World3ShrineUnlockLastAt < Array.Config.World3Shrine.RetryDelay * 2
+	then
+		Array.Function.SetStatus("World3ShrineUnlock", "cooldown")
+
+		return false
+	end
+
+	Array.State.World3ShrineUnlockLastAt = os.clock()
+
 	Array.State.World3ShrineUnlockRemote = Array.Function.GetWorld3ShrineUnlockRemote()
 
 	if not Array.State.World3ShrineUnlockRemote then
@@ -8299,26 +8377,26 @@ function Array.Function.TriggerWorld3ShrinePrompt(Prompt)
 		Array.State.World3ShrineFirePromptSuccess = pcall(function()
 			fireproximityprompt(Prompt)
 		end)
-		Array.State.World3ShrinePromptFired =
-			Array.State.World3ShrinePromptFired or Array.State.World3ShrineFirePromptSuccess
+		Array.State.World3ShrinePromptFired = Array.State.World3ShrineFirePromptSuccess
 	end
 
-	Array.State.World3ShrineInputSuccess = pcall(function()
-		Prompt:InputHoldBegin()
-		task.wait(Array.State.World3ShrineHoldDuration + 0.12)
-		Prompt:InputHoldEnd()
-	end)
+	if not Array.State.World3ShrinePromptFired then
+		Array.State.World3ShrineInputSuccess = pcall(function()
+			Prompt:InputHoldBegin()
+			task.wait(Array.State.World3ShrineHoldDuration + 0.12)
+			Prompt:InputHoldEnd()
+		end)
+		Array.State.World3ShrinePromptFired = Array.State.World3ShrineInputSuccess
+	end
 
-	Array.State.World3ShrinePromptFired = Array.State.World3ShrinePromptFired or Array.State.World3ShrineInputSuccess
-
-	if type(firesignal) == "function" then
+	if not Array.State.World3ShrinePromptFired and type(firesignal) == "function" then
 		Array.State.World3ShrineFireSignalSuccess = pcall(function()
 			firesignal(Prompt.Triggered, Array.Service.Player)
 		end)
-		Array.State.World3ShrinePromptFired = Array.State.World3ShrinePromptFired or Array.State.World3ShrineFireSignalSuccess
+		Array.State.World3ShrinePromptFired = Array.State.World3ShrineFireSignalSuccess
 	end
 
-	if type(getconnections) == "function" then
+	if not Array.State.World3ShrinePromptFired and type(getconnections) == "function" then
 		Array.State.World3ShrineConnectionsSuccess = pcall(function()
 			for _, Connection in next, getconnections(Prompt.Triggered) do
 				pcall(function()
@@ -8326,14 +8404,17 @@ function Array.Function.TriggerWorld3ShrinePrompt(Prompt)
 				end)
 
 				Array.State.World3ShrinePromptFired = true
+				break
 			end
 		end)
 	end
 
-	Array.State.World3ShrineRemoteFired = Array.Function.InvokeWorld3ShrineRemote(Prompt)
+	if not Array.State.World3ShrinePromptFired then
+		Array.State.World3ShrineRemoteFired = Array.Function.InvokeWorld3ShrineRemote(Prompt)
 
-	if not Array.State.World3ShrineRemoteFired then
-		Array.State.World3ShrineRemoteFired = Array.Function.InvokeWorld3ShrineUnlockRemote()
+		if not Array.State.World3ShrineRemoteFired then
+			Array.State.World3ShrineRemoteFired = Array.Function.InvokeWorld3ShrineUnlockRemote()
+		end
 	end
 
 	Array.State.World3ShrinePromptFired =
@@ -8426,6 +8507,15 @@ function Array.Function.ClickWorld3ShrineAcceptButtons(Timeout)
 end
 
 function Array.Function.TryWorld3ShrineInteraction()
+	if Array.State.World3ShrineLastInteractAt
+		and os.clock() - Array.State.World3ShrineLastInteractAt < Array.Config.World3Shrine.RetryDelay
+	then
+		Array.Function.SetStatus("World3ShrineState", "interaction_cooldown")
+
+		return false
+	end
+
+	Array.State.World3ShrineLastInteractAt = os.clock()
 	Array.State.World3ShrinePrompt = Array.Function.FindWorld3ShrinePrompt()
 
 	if not Array.State.World3ShrinePrompt then
@@ -8452,9 +8542,29 @@ function Array.Function.ReturnToWorld2FromWorld3()
 	end
 
 	Array.State.World3ReturningToWorld2 = true
+	_G.HSKaitunPostMaxWorld2 = true
 	Array.Function.SetStatus("World3ShrineState", "returning_world2")
+	Array.Function.SetStatus("World3ReturnReason", "post_max_island_boss")
 	Array.Function.SetStatus("World3Return", "queueing")
-	Array.State.World3ReturnQueued = Array.Function.QueueTargetRunner()
+
+	local postMaxWorld2Source = "_G.HSKaitunPostMaxWorld2 = true\n"
+		.. "local ok, source = pcall(readfile, \"HSKaitun_PostMax_Sea2.lua\")\n"
+		.. "if ok and type(source) == \"string\" then\n"
+		.. "\tlocal chunk = loadstring(source)\n"
+		.. "\tif type(chunk) == \"function\" then chunk() end\n"
+		.. "end"
+
+	if type(writefile) == "function" then
+		Array.State.World3SourceFileWriteSuccess = pcall(function()
+			writefile("HSKaitun_PostMax_Sea2.lua", Array.World2AutoFarmCode)
+		end)
+	end
+
+	if not Array.State.World3SourceFileWriteSuccess then
+		postMaxWorld2Source = "_G.HSKaitunPostMaxWorld2 = true\n" .. Array.World2AutoFarmCode
+	end
+
+	Array.State.World3ReturnQueued = Array.Function.QueueTargetRunner(nil, postMaxWorld2Source)
 	Array.Function.SetStatus("World3ReturnQueued", Array.State.World3ReturnQueued)
 	Array.State.World3ReturnSuccess, Array.State.World3ReturnResult = pcall(function()
 		return Array.Service.TeleportService:Teleport(Array.Config.PlaceId.World2, Array.Service.Player)
@@ -8470,6 +8580,16 @@ function Array.Function.ReturnToWorld2FromWorld3()
 	end
 
 	return Array.State.World3ReturnSuccess
+end
+
+function Array.Function.ShouldReturnToWorld2FromWorld3()
+	local level = Array.Function.GetPlayerLevel()
+	local maxLevel = Array.Function.GetWorld3MaxLevel()
+
+	Array.Function.SetStatus("World3PostMaxLevel", level)
+	Array.Function.SetStatus("World3PostMaxRequiredLevel", maxLevel)
+
+	return level >= maxLevel and Array.Function.HasWorld3ShrineReward()
 end
 
 function Array.Function.StartWorld3ShrineLoop()
@@ -8491,41 +8611,54 @@ function Array.Function.StartWorld3ShrineLoop()
 			and game.PlaceId == Array.Config.PlaceId.World3
 			and Array.Config.World3Shrine.Enabled
 		do
-			local shrineRequirementsReady = Array.Function.CheckWorld3ShrineRequirements()
 			local shrineRewardOwned = Array.Function.HasWorld3ShrineReward()
 
-			if not shrineRequirementsReady then
-				Array.Function.SetStatus(
-					"World3ShrineState",
-					shrineRewardOwned and "training_mastery" or "waiting_requirements"
-				)
-				task.wait(Array.Config.World3Shrine.CheckDelay)
-				continue
-			end
-
 			if shrineRewardOwned then
-				Array.Function.SetStatus("World3ShrineState", "reward_owned")
+				if Array.Function.ShouldReturnToWorld2FromWorld3() then
+					Array.Function.SetStatus("World3ShrineState", "post_max_return_world2")
 
-				if Array.Function.EquipWorld3ShrineReward() and Array.Function.ReturnToWorld2FromWorld3() then
-					break
+					if Array.Function.EquipWorld3ShrineReward()
+						and Array.Function.ReturnToWorld2FromWorld3()
+					then
+						break
+					end
+
+					task.wait(Array.Config.World3Shrine.RetryDelay)
+					continue
 				end
 
-				task.wait(Array.Config.World3Shrine.RetryDelay)
+				Array.Function.SetStatus("World3ShrineState", "completed")
+				Array.Function.EquipWorld3ShrineReward()
+				break
+			end
+
+			local shrineRequirementsReady = Array.Function.CheckWorld3ShrineRequirements()
+
+			if not shrineRequirementsReady then
+				Array.Function.SetStatus("World3ShrineState", "waiting_requirements")
+
+				task.wait(Array.Config.World3Shrine.CheckDelay)
 				continue
 			end
 
 			Array.Function.SetStatus("World3ShrineState", "interacting")
 			Array.Function.TryWorld3ShrineInteraction()
 
-			if Array.Function.CheckWorld3ShrineRequirements() and Array.Function.HasWorld3ShrineReward() then
-				Array.Function.SetStatus("World3ShrineState", "reward_owned")
+			if Array.Function.HasWorld3ShrineReward() then
+				if Array.Function.ShouldReturnToWorld2FromWorld3() then
+					Array.Function.SetStatus("World3ShrineState", "post_max_return_world2")
 
-				if Array.Function.EquipWorld3ShrineReward() and Array.Function.ReturnToWorld2FromWorld3() then
+					if Array.Function.EquipWorld3ShrineReward()
+						and Array.Function.ReturnToWorld2FromWorld3()
+					then
+						break
+					end
+				else
+					Array.Function.SetStatus("World3ShrineState", "completed")
+					Array.Function.EquipWorld3ShrineReward()
+
 					break
 				end
-
-				task.wait(Array.Config.World3Shrine.RetryDelay)
-				continue
 			end
 
 			task.wait(Array.Config.World3Shrine.RetryDelay)
@@ -15659,6 +15792,7 @@ assert(type(Array.Function.FindWorld3ShrinePrompt) == "function", "world 3 shrin
 assert(type(Array.Function.TriggerWorld3ShrinePrompt) == "function", "world 3 shrine prompt trigger missing")
 assert(type(Array.Function.GetWorld3MaxLevel) == "function", "world 3 max level helper missing")
 assert(type(Array.Function.ReturnToWorld2FromWorld3) == "function", "world 3 return helper missing")
+assert(type(Array.Function.ShouldReturnToWorld2FromWorld3) == "function", "world 3 post max return gate missing")
 assert(type(Array.Function.GetWorld3ShrineUnlockRemote) == "function", "world 3 shrine unlock remote finder missing")
 assert(type(Array.Function.InvokeWorld3ShrineUnlockRemote) == "function", "world 3 shrine unlock remote invoke missing")
 assert(type(Array.Function.GetSwordMastery) == "function", "sword mastery helper missing")
