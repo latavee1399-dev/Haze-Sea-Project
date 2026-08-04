@@ -3,6 +3,26 @@ repeat task.wait() until game:IsLoaded()
 if game.PlaceId == 14979402479 then
 	_G.HazeSea2AutoExecutorPresent = true
 	_G.HazeSea2AutoExecutorStartedAt = os.clock()
+
+	local player = game:GetService("Players").LocalPlayer
+	local playerData = player and player:FindFirstChild("PlayerData")
+	local experience = playerData and playerData:FindFirstChild("Experience")
+	local levelValue = experience and experience:FindFirstChild("Level")
+	local sword = playerData and playerData:FindFirstChild("Sword")
+	local currentSword = sword and sword:FindFirstChild("CurrentSword")
+	local ownedSwords = sword and sword:FindFirstChild("OwnedSwords")
+	local swordText = string.lower(tostring(currentSword and currentSword.Value or "") .. " " .. tostring(ownedSwords and ownedSwords.Value or ""))
+
+	if tonumber(levelValue and levelValue.Value) >= 4800
+		and (string.find(swordText, "3 sword style", 1, true) or string.find(swordText, "three sword", 1, true))
+	then
+		_G.HSKaitunPostMaxWorld2 = true
+	end
+end
+
+if _G.HSKaitunPostMaxWorld2 == true then
+	_G.HSKaitunLoadDelaySeconds = 0
+	_G.HSKaitunGameLoadReadyAt = os.clock()
 end
 
 local LoadDelay = math.max(tonumber(_G.HSKaitunLoadDelaySeconds) or 10, 0)
@@ -64,6 +84,56 @@ end
 Config.Enabled = true
 Config.RunId = RunId
 Config.PostMaxReturn = Config.PostMaxReturn == true or _G.HSKaitunPostMaxWorld2 == true
+Config.IslandBossOnly = Config.IslandBossOnly == true or _G.HSKaitunIslandBossOnly == true
+if Config.IslandBossOnly then
+	Config.PostMaxReturn = true
+	_G.HSKaitunPostMaxWorld2 = true
+	Config.Sea3Unlock = false
+end
+if Config.PostMaxReturn then
+	Config.Sea3Unlock = false
+end
+
+if Config.PostMaxReturn
+	and type(hookmetamethod) == "function"
+	and type(getnamecallmethod) == "function"
+	and type(newcclosure) == "function"
+	and not _G.HSKaitunPostMaxTeleportGuard
+then
+	local teleportService = game:GetService("TeleportService")
+	local oldNamecall
+	oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+		local method = getnamecallmethod()
+		if _G.HSKaitunPostMaxWorld2
+			and game.PlaceId == 14979402479
+			and type(method) == "string"
+			and (
+				self == teleportService
+				or (
+					type(self) == "userdata"
+					and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction"))
+					and (
+						string.find(string.lower(self:GetFullName()), "sea3", 1, true)
+						or string.find(string.lower(self:GetFullName()), "world3", 1, true)
+						or string.find(string.lower(self:GetFullName()), "teleport", 1, true)
+						or string.find(string.lower(self:GetFullName()), "dimensional", 1, true)
+						or string.find(string.lower(self:GetFullName()), "travel", 1, true)
+					)
+				)
+			)
+			and (
+				self == teleportService
+				or string.find(string.lower(method), "teleport", 1, true)
+				or string.find(string.lower(method), "invokeserver", 1, true)
+				or string.find(string.lower(method), "fireserver", 1, true)
+			)
+		then
+			return nil
+		end
+		return oldNamecall(self, ...)
+	end))
+	_G.HSKaitunPostMaxTeleportGuard = true
+end
 Config.MultiClientOptimize = Config.MultiClientOptimize ~= false
 Config.QueueSea3Source = type(Config.QueueSea3Source) == "string" and Config.QueueSea3Source or ""
 Config.QueueSea3Urls = type(Config.QueueSea3Urls) == "table" and Config.QueueSea3Urls or {
@@ -838,6 +908,23 @@ end
 
 local function getSeaIndex()
 	return tonumber(getPlayerDataValue("SeaIndex", workspace:GetAttribute("Sea") or 0)) or 0
+end
+
+local function hasWorld3ShrineReward()
+	local swordFolder = getPlayerData() and getPlayerData():FindFirstChild("Sword")
+
+	for _, valueName in next, { "CurrentSword", "OwnedSwords" } do
+		local value = tostring(getValue(swordFolder, valueName, "")):lower()
+
+		if string.find(value, "3 sword style", 1, true)
+			or string.find(value, "three sword", 1, true)
+			or string.find(value, "santoryu", 1, true)
+		then
+			return true
+		end
+	end
+
+	return false
 end
 
 local function getClientEvent(name)
@@ -3755,7 +3842,9 @@ end
 function Config.DragonIsland.IsPostMaxActive(level)
 	level = tonumber(level) or getLevel()
 
-	if Config.PostMaxReturn then
+	if Config.PostMaxReturn
+		or (level >= Config.Sea3RequiredLevel and hasWorld3ShrineReward())
+	then
 		return true
 	end
 
@@ -5241,7 +5330,10 @@ local function shouldRunSea3Unlock(level)
 		return false
 	end
 
-	if Config.PostMaxReturn then
+	if Config.PostMaxReturn
+		or (level >= Config.Sea3RequiredLevel and hasWorld3ShrineReward())
+	then
+		Config.PostMaxReturn = true
 		setStatus("Sea3UnlockEnabled", false)
 		setStatus("Sea3GateBlockReason", "post_max_island_boss")
 
@@ -5374,6 +5466,13 @@ function Config.Sea3Gate.QueueRunner()
 end
 
 function Config.Sea3Gate.RequestTeleport()
+	if Config.PostMaxReturn or _G.HSKaitunPostMaxWorld2 == true then
+		Config.PostMaxReturn = true
+		Config.Sea3Unlock = false
+		setStatus("Sea3TeleportBlocked", "post_max_island_boss")
+		return false
+	end
+
 	local workspaceSeaIndex = tonumber(workspace:GetAttribute("Sea") or 0) or 0
 
 	if workspaceSeaIndex >= 3 then
@@ -5720,7 +5819,23 @@ task.spawn(function()
 				continue
 			end
 
-			if world2PostMax then
+			if Config.IslandBossOnly then
+				if Config.DragonIsland.HandleAwakenBoss(level) then
+					task.wait(Config.LoopDelay)
+					continue
+				end
+
+				if Config.DragonIsland.HandleSuperBoss(level) then
+					task.wait(Config.LoopDelay)
+					continue
+				end
+
+				CurrentTarget = nil
+				setStatus("IslandBossOnly", true)
+				setStatus("State", "island_boss_waiting")
+				task.wait(Config.LoopDelay)
+				continue
+			elseif world2PostMax then
 				if Config.DragonIsland.HandleAwakenBoss(level) then
 					task.wait(Config.LoopDelay)
 					continue
