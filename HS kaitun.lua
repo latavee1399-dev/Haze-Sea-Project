@@ -532,6 +532,28 @@ end)
 	World2AutoFarmCode = [=[
 repeat task.wait() until game:IsLoaded()
 
+if game.PlaceId == 14979402479 then
+	local player = game:GetService("Players").LocalPlayer
+	local playerData = player and player:FindFirstChild("PlayerData")
+	local experience = playerData and playerData:FindFirstChild("Experience")
+	local levelValue = experience and experience:FindFirstChild("Level")
+	local sword = playerData and playerData:FindFirstChild("Sword")
+	local currentSword = sword and sword:FindFirstChild("CurrentSword")
+	local ownedSwords = sword and sword:FindFirstChild("OwnedSwords")
+	local swordText = string.lower(tostring(currentSword and currentSword.Value or "") .. " " .. tostring(ownedSwords and ownedSwords.Value or ""))
+
+	if tonumber(levelValue and levelValue.Value) >= 4800
+		and (string.find(swordText, "3 sword style", 1, true) or string.find(swordText, "three sword", 1, true))
+	then
+		_G.HSKaitunPostMaxWorld2 = true
+	end
+end
+
+if _G.HSKaitunPostMaxWorld2 == true then
+	_G.HSKaitunLoadDelaySeconds = 0
+	_G.HSKaitunGameLoadReadyAt = os.clock()
+end
+
 local LoadDelay = math.max(tonumber(_G.HSKaitunLoadDelaySeconds) or 10, 0)
 local LoadReadyAt = tonumber(_G.HSKaitunGameLoadReadyAt)
 
@@ -591,6 +613,50 @@ end
 Config.Enabled = true
 Config.RunId = RunId
 Config.PostMaxReturn = Config.PostMaxReturn == true or _G.HSKaitunPostMaxWorld2 == true
+if Config.PostMaxReturn then
+	Config.Sea3Unlock = false
+end
+
+if Config.PostMaxReturn
+	and type(hookmetamethod) == "function"
+	and type(getnamecallmethod) == "function"
+	and type(newcclosure) == "function"
+	and not _G.HSKaitunPostMaxTeleportGuard
+then
+	local teleportService = game:GetService("TeleportService")
+	local oldNamecall
+	oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+		local method = getnamecallmethod()
+		if _G.HSKaitunPostMaxWorld2
+			and game.PlaceId == 14979402479
+			and type(method) == "string"
+			and (
+				self == teleportService
+				or (
+					type(self) == "userdata"
+					and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction"))
+					and (
+						string.find(string.lower(self:GetFullName()), "sea3", 1, true)
+						or string.find(string.lower(self:GetFullName()), "world3", 1, true)
+						or string.find(string.lower(self:GetFullName()), "teleport", 1, true)
+						or string.find(string.lower(self:GetFullName()), "dimensional", 1, true)
+						or string.find(string.lower(self:GetFullName()), "travel", 1, true)
+					)
+				)
+			)
+			and (
+				self == teleportService
+				or string.find(string.lower(method), "teleport", 1, true)
+				or string.find(string.lower(method), "invokeserver", 1, true)
+				or string.find(string.lower(method), "fireserver", 1, true)
+			)
+		then
+			return nil
+		end
+		return oldNamecall(self, ...)
+	end))
+	_G.HSKaitunPostMaxTeleportGuard = true
+end
 Config.MultiClientOptimize = Config.MultiClientOptimize ~= false
 Config.QueueSea3Source = type(Config.QueueSea3Source) == "string" and Config.QueueSea3Source or ""
 Config.QueueSea3Urls = type(Config.QueueSea3Urls) == "table" and Config.QueueSea3Urls or {
@@ -1365,6 +1431,23 @@ end
 
 local function getSeaIndex()
 	return tonumber(getPlayerDataValue("SeaIndex", workspace:GetAttribute("Sea") or 0)) or 0
+end
+
+local function hasWorld3ShrineReward()
+	local swordFolder = getPlayerData() and getPlayerData():FindFirstChild("Sword")
+
+	for _, valueName in next, { "CurrentSword", "OwnedSwords" } do
+		local value = tostring(getValue(swordFolder, valueName, "")):lower()
+
+		if string.find(value, "3 sword style", 1, true)
+			or string.find(value, "three sword", 1, true)
+			or string.find(value, "santoryu", 1, true)
+		then
+			return true
+		end
+	end
+
+	return false
 end
 
 local function getClientEvent(name)
@@ -4277,7 +4360,9 @@ end
 function Config.DragonIsland.IsPostMaxActive(level)
 	level = tonumber(level) or getLevel()
 
-	if Config.PostMaxReturn then
+	if Config.PostMaxReturn
+		or (level >= Config.Sea3RequiredLevel and hasWorld3ShrineReward())
+	then
 		return true
 	end
 
@@ -5763,7 +5848,10 @@ local function shouldRunSea3Unlock(level)
 		return false
 	end
 
-	if Config.PostMaxReturn then
+	if Config.PostMaxReturn
+		or (level >= Config.Sea3RequiredLevel and hasWorld3ShrineReward())
+	then
+		Config.PostMaxReturn = true
 		setStatus("Sea3UnlockEnabled", false)
 		setStatus("Sea3GateBlockReason", "post_max_island_boss")
 
@@ -5896,6 +5984,13 @@ function Config.Sea3Gate.QueueRunner()
 end
 
 function Config.Sea3Gate.RequestTeleport()
+	if Config.PostMaxReturn or _G.HSKaitunPostMaxWorld2 == true then
+		Config.PostMaxReturn = true
+		Config.Sea3Unlock = false
+		setStatus("Sea3TeleportBlocked", "post_max_island_boss")
+		return false
+	end
+
 	local workspaceSeaIndex = tonumber(workspace:GetAttribute("Sea") or 0) or 0
 
 	if workspaceSeaIndex >= 3 then
@@ -6798,7 +6893,7 @@ Array.Config.World2AutoFarm.StatOrder[2] = "Defense"
 Array.Config.World2AutoFarm.StatOrder[3] = "Fruit"
 Array.Config.World2AutoFarm.ForceFarmLevelEnabled = Array.Config.World2AutoFarm.ForceFarmLevelEnabled == true
 Array.Config.World3Shrine = type(Array.Config.World3Shrine) == "table" and Array.Config.World3Shrine or {}
-Array.Config.World3Shrine.Enabled = Array.Config.World3Shrine.Enabled ~= false
+Array.Config.World3Shrine.Enabled = false
 Array.Config.World3Shrine.RockModelName = tostring(Array.Config.World3Shrine.RockModelName or "3SSRock")
 Array.Config.World3Shrine.UnlockRemoteName = tostring(Array.Config.World3Shrine.UnlockRemoteName or "Unlock")
 Array.Config.World3Shrine.UseDirectUnlock = Array.Config.World3Shrine.UseDirectUnlock ~= false
@@ -8533,6 +8628,9 @@ function Array.Function.TryWorld3ShrineInteraction()
 end
 
 function Array.Function.ReturnToWorld2FromWorld3()
+	Array.Function.SetStatus("World3Return", "disabled")
+	return false
+
 	if game.PlaceId ~= Array.Config.PlaceId.World3 then
 		return false
 	end
@@ -8547,12 +8645,28 @@ function Array.Function.ReturnToWorld2FromWorld3()
 	Array.Function.SetStatus("World3ReturnReason", "post_max_island_boss")
 	Array.Function.SetStatus("World3Return", "queueing")
 
-	local postMaxWorld2Source = "_G.HSKaitunPostMaxWorld2 = true\n"
-		.. "local ok, source = pcall(readfile, \"HSKaitun_PostMax_Sea2.lua\")\n"
-		.. "if ok and type(source) == \"string\" then\n"
-		.. "\tlocal chunk = loadstring(source)\n"
-		.. "\tif type(chunk) == \"function\" then chunk() end\n"
-		.. "end"
+	local postMaxWorld2Bootstrap = "_G.HSKaitunPostMaxWorld2 = true\n"
+		.. "_G.HazeSeasAutoFarm = type(_G.HazeSeasAutoFarm) == \"table\" and _G.HazeSeasAutoFarm or {}\n"
+		.. "_G.HazeSeasAutoFarm.PostMaxReturn = true\n"
+		.. "_G.HazeSeasAutoFarm.Sea3Unlock = false\n"
+		.. "_G.HSKaitunLoadDelaySeconds = 0\n"
+		.. "_G.HSKaitunGameLoadReadyAt = os.clock()\n"
+		.. "if type(hookmetamethod) == \"function\" and type(getnamecallmethod) == \"function\" and type(newcclosure) == \"function\" and not _G.HSKaitunPostMaxTeleportGuard then\n"
+		.. "\tlocal teleportService = game:GetService(\"TeleportService\")\n"
+		.. "\tlocal oldNamecall\n"
+		.. "\toldNamecall = hookmetamethod(game, \"__namecall\", newcclosure(function(self, ...)\n"
+		.. "\t\tlocal method = getnamecallmethod()\n"
+		.. "\t\tlocal isRemote = type(self) == \"userdata\" and (self:IsA(\"RemoteEvent\") or self:IsA(\"RemoteFunction\"))\n"
+		.. "\t\tlocal remoteName = isRemote and string.lower(tostring(self.Name)) or \"\"\n"
+		.. "\t\tlocal blocksSea3Remote = isRemote and (string.find(string.lower(method), \"invokeserver\", 1, true) or string.find(string.lower(method), \"fireserver\", 1, true) or string.find(string.lower(method), \"teleport\", 1, true)) and (string.find(remoteName, \"sea3\", 1, true) or string.find(remoteName, \"world3\", 1, true) or string.find(remoteName, \"teleport\", 1, true) or string.find(remoteName, \"dimensional\", 1, true) or string.find(remoteName, \"travel\", 1, true))\n"
+		.. "\t\tif _G.HSKaitunPostMaxWorld2 and game.PlaceId == 14979402479 and (self == teleportService or blocksSea3Remote) then\n"
+		.. "\t\t\treturn nil\n"
+		.. "\t\tend\n"
+		.. "\t\treturn oldNamecall(self, ...)\n"
+		.. "\tend))\n"
+	.. "\t_G.HSKaitunPostMaxTeleportGuard = true\n"
+		.. "end\n"
+	local postMaxWorld2Source = postMaxWorld2Bootstrap
 
 	if type(writefile) == "function" then
 		Array.State.World3SourceFileWriteSuccess = pcall(function()
@@ -8560,9 +8674,7 @@ function Array.Function.ReturnToWorld2FromWorld3()
 		end)
 	end
 
-	if not Array.State.World3SourceFileWriteSuccess then
-		postMaxWorld2Source = "_G.HSKaitunPostMaxWorld2 = true\n" .. Array.World2AutoFarmCode
-	end
+	Array.Function.SetStatus("World3QueuePayloadLength", #postMaxWorld2Source)
 
 	Array.State.World3ReturnQueued = Array.Function.QueueTargetRunner(nil, postMaxWorld2Source)
 	Array.Function.SetStatus("World3ReturnQueued", Array.State.World3ReturnQueued)
@@ -8583,6 +8695,9 @@ function Array.Function.ReturnToWorld2FromWorld3()
 end
 
 function Array.Function.ShouldReturnToWorld2FromWorld3()
+	Array.Function.SetStatus("World3Return", "disabled")
+	return false
+
 	local level = Array.Function.GetPlayerLevel()
 	local maxLevel = Array.Function.GetWorld3MaxLevel()
 
@@ -8593,6 +8708,9 @@ function Array.Function.ShouldReturnToWorld2FromWorld3()
 end
 
 function Array.Function.StartWorld3ShrineLoop()
+	Array.Function.SetStatus("World3Shrine", "disabled")
+	return false
+
 	if Array.State.World3ShrineStarted or not Array.Config.World3Shrine.Enabled then
 		return false
 	end
@@ -8668,6 +8786,40 @@ function Array.Function.StartWorld3ShrineLoop()
 	return true
 end
 
+function Array.Function.StartWorld3CompletionMonitor()
+	if Array.State.World3CompletionMonitorStarted then
+		return true
+	end
+
+	Array.State.World3CompletionMonitorStarted = true
+	Array.Function.SetStatus("World3CompletionMonitor", "started")
+
+	task.spawn(function()
+		while Array.Function.IsRunning() and game.PlaceId == Array.Config.PlaceId.World3 do
+			Array.State.World3CompletionLevel = Array.Function.GetPlayerLevel()
+			Array.State.World3CompletionReward = Array.Function.HasWorld3ShrineReward()
+			Array.Function.SetStatus("World3CompletionLevel", Array.State.World3CompletionLevel)
+			Array.Function.SetStatus("World3CompletionReward", Array.State.World3CompletionReward)
+
+			if Array.State.World3CompletionLevel >= Array.Config.World3AutoFarm.MaxLevel
+				and Array.State.World3CompletionReward
+			then
+				Array.Function.SetStatus("World3Completion", "completed_4800_3_sword")
+				Array.Function.SetAutoFarmStatus("State", "completed_4800_3_sword")
+				Array.Config.Enabled = false
+				_G.AutoFarmLevel = false
+				Array.State.CurrentTarget = nil
+				Array.State.CurrentQuest = nil
+				return
+			end
+
+			task.wait(1)
+		end
+	end)
+
+	return true
+end
+
 function Array.Function.StartWorld3Script()
 	if Array.State.World3Started then
 		return true
@@ -8685,6 +8837,7 @@ function Array.Function.StartWorld3Script()
 	Array.Function.RedeemCodes()
 	Array.Function.StartWorld3ShrineLoop()
 	Array.Function.StartWorld3AutoFarm()
+	Array.Function.StartWorld3CompletionMonitor()
 
 	return true
 end
