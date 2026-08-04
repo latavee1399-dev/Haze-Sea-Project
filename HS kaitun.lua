@@ -1,5 +1,16 @@
 repeat task.wait() until game:IsLoaded()
 
+-- The main kaitun run must not inherit standalone Island Boss state from a previous run.
+_G.HSKaitunIslandBossOnly = nil
+_G.HSKaitunPostMaxWorld2 = nil
+_G.HazeSea2AutoExecutorPresent = nil
+
+if type(_G.HazeSeasAutoFarm) == "table" then
+	_G.HazeSeasAutoFarm.IslandBossOnly = nil
+	_G.HazeSeasAutoFarm.PostMaxReturn = nil
+	_G.HazeSeasAutoFarm.Sea3Unlock = nil
+end
+
 local LoadDelay = math.max(tonumber(_G.HSKaitunLoadDelaySeconds) or 10, 0)
 local LoadReadyAt = tonumber(_G.HSKaitunGameLoadReadyAt)
 
@@ -297,11 +308,13 @@ local Array = {
 			HoverGyroMaxTorque = 100000000,
 			HoverLerpAlpha = 0.35,
 			HoverStepDelay = 0.035,
-			AttackBurst = 2,
-			AttackBurstDelay = 0.02,
-			AttackDelay = 0.06,
+			AttackBurst = 1,
+			AttackBurstDelay = 0.12,
+			AttackDelay = 0.56,
 			FireActivatedSignal = true,
 			UpdateMousePosition = true,
+			AimMouseAtTarget = true,
+			AimMouseDelay = 0.08,
 			BlackLegAutoSkills = true,
 			BlackLegSkillInputMode = "Remote",
 			BlackLegSkillAimMouse = false,
@@ -391,6 +404,14 @@ local Array = {
 	Function = {},
 	QueueCode = [=[
 _G.HSKaitunReloaded = false
+_G.HSKaitunIslandBossOnly = nil
+_G.HSKaitunPostMaxWorld2 = nil
+_G.HazeSea2AutoExecutorPresent = nil
+if type(_G.HazeSeasAutoFarm) == "table" then
+	_G.HazeSeasAutoFarm.IslandBossOnly = nil
+	_G.HazeSeasAutoFarm.PostMaxReturn = nil
+	_G.HazeSeasAutoFarm.Sea3Unlock = nil
+end
 
 repeat task.wait() until game:IsLoaded()
 
@@ -6896,7 +6917,7 @@ Array.Config.World2AutoFarm.StatOrder[2] = "Defense"
 Array.Config.World2AutoFarm.StatOrder[3] = "Fruit"
 Array.Config.World2AutoFarm.ForceFarmLevelEnabled = Array.Config.World2AutoFarm.ForceFarmLevelEnabled == true
 Array.Config.World3Shrine = type(Array.Config.World3Shrine) == "table" and Array.Config.World3Shrine or {}
-Array.Config.World3Shrine.Enabled = false
+Array.Config.World3Shrine.Enabled = true
 Array.Config.World3Shrine.RockModelName = tostring(Array.Config.World3Shrine.RockModelName or "3SSRock")
 Array.Config.World3Shrine.UnlockRemoteName = tostring(Array.Config.World3Shrine.UnlockRemoteName or "Unlock")
 Array.Config.World3Shrine.UseDirectUnlock = Array.Config.World3Shrine.UseDirectUnlock ~= false
@@ -7122,9 +7143,9 @@ Array.Config.AutoFarm.HoverVelocityMaxForce = math.max(tonumber(Array.Config.Aut
 Array.Config.AutoFarm.HoverGyroMaxTorque = math.max(tonumber(Array.Config.AutoFarm.HoverGyroMaxTorque) or 100000000, 10000)
 Array.Config.AutoFarm.HoverLerpAlpha = math.clamp(tonumber(Array.Config.AutoFarm.HoverLerpAlpha) or 0.35, 0, 1)
 Array.Config.AutoFarm.HoverStepDelay = math.max(tonumber(Array.Config.AutoFarm.HoverStepDelay) or 0.035, 0.01)
-Array.Config.AutoFarm.AttackBurst = math.max(1, math.floor(tonumber(Array.Config.AutoFarm.AttackBurst) or 2))
-Array.Config.AutoFarm.AttackBurstDelay = math.max(tonumber(Array.Config.AutoFarm.AttackBurstDelay) or 0.02, 0.01)
-Array.Config.AutoFarm.AttackDelay = math.max(tonumber(Array.Config.AutoFarm.AttackDelay) or 0.06, 0.01)
+Array.Config.AutoFarm.AttackBurst = 1
+Array.Config.AutoFarm.AttackBurstDelay = math.max(tonumber(Array.Config.AutoFarm.AttackBurstDelay) or 0.12, 0.08)
+Array.Config.AutoFarm.AttackDelay = math.max(tonumber(Array.Config.AutoFarm.AttackDelay) or 0.56, 0.56)
 Array.Config.AutoFarm.BlackLegAutoSkills = Array.Config.AutoFarm.BlackLegAutoSkills ~= false
 Array.Config.AutoFarm.BlackLegSkillInputMode = tostring(Array.Config.AutoFarm.BlackLegSkillInputMode or "Remote")
 Array.State.BlackLegSkillInputModeLookup = string.lower(Array.Config.AutoFarm.BlackLegSkillInputMode)
@@ -7186,6 +7207,8 @@ if Array.Config.MultiClientOptimize then
 end
 Array.Config.AutoFarm.FireActivatedSignal = Array.Config.AutoFarm.FireActivatedSignal ~= false
 Array.Config.AutoFarm.UpdateMousePosition = Array.Config.AutoFarm.UpdateMousePosition ~= false
+Array.Config.AutoFarm.AimMouseAtTarget = Array.Config.AutoFarm.AimMouseAtTarget ~= false
+Array.Config.AutoFarm.AimMouseDelay = math.max(tonumber(Array.Config.AutoFarm.AimMouseDelay) or 0.08, 0)
 Array.Config.AutoFarm.HitOffset = typeof(Array.Config.AutoFarm.HitOffset) == "Vector3" and Array.Config.AutoFarm.HitOffset or Vector3.new(0, 1.5, 0)
 Array.Config.AutoFarm.BossQuestNames = type(Array.Config.AutoFarm.BossQuestNames) == "table" and Array.Config.AutoFarm.BossQuestNames or {}
 for Key, Value in next, {
@@ -8632,88 +8655,17 @@ end
 
 function Array.Function.ReturnToWorld2FromWorld3()
 	Array.Function.SetStatus("World3Return", "disabled")
+
 	return false
-
-	if game.PlaceId ~= Array.Config.PlaceId.World3 then
-		return false
-	end
-
-	if Array.State.World3ReturningToWorld2 then
-		return true
-	end
-
-	Array.State.World3ReturningToWorld2 = true
-	_G.HSKaitunPostMaxWorld2 = true
-	Array.Function.SetStatus("World3ShrineState", "returning_world2")
-	Array.Function.SetStatus("World3ReturnReason", "post_max_island_boss")
-	Array.Function.SetStatus("World3Return", "queueing")
-
-	local postMaxWorld2Bootstrap = "_G.HSKaitunPostMaxWorld2 = true\n"
-		.. "_G.HazeSeasAutoFarm = type(_G.HazeSeasAutoFarm) == \"table\" and _G.HazeSeasAutoFarm or {}\n"
-		.. "_G.HazeSeasAutoFarm.PostMaxReturn = true\n"
-		.. "_G.HazeSeasAutoFarm.Sea3Unlock = false\n"
-		.. "_G.HSKaitunLoadDelaySeconds = 0\n"
-		.. "_G.HSKaitunGameLoadReadyAt = os.clock()\n"
-		.. "if type(hookmetamethod) == \"function\" and type(getnamecallmethod) == \"function\" and type(newcclosure) == \"function\" and not _G.HSKaitunPostMaxTeleportGuard then\n"
-		.. "\tlocal teleportService = game:GetService(\"TeleportService\")\n"
-		.. "\tlocal oldNamecall\n"
-		.. "\toldNamecall = hookmetamethod(game, \"__namecall\", newcclosure(function(self, ...)\n"
-		.. "\t\tlocal method = getnamecallmethod()\n"
-		.. "\t\tlocal isRemote = type(self) == \"userdata\" and (self:IsA(\"RemoteEvent\") or self:IsA(\"RemoteFunction\"))\n"
-		.. "\t\tlocal remoteName = isRemote and string.lower(tostring(self.Name)) or \"\"\n"
-		.. "\t\tlocal blocksSea3Remote = isRemote and (string.find(string.lower(method), \"invokeserver\", 1, true) or string.find(string.lower(method), \"fireserver\", 1, true) or string.find(string.lower(method), \"teleport\", 1, true)) and (string.find(remoteName, \"sea3\", 1, true) or string.find(remoteName, \"world3\", 1, true) or string.find(remoteName, \"teleport\", 1, true) or string.find(remoteName, \"dimensional\", 1, true) or string.find(remoteName, \"travel\", 1, true))\n"
-		.. "\t\tif _G.HSKaitunPostMaxWorld2 and game.PlaceId == 14979402479 and (self == teleportService or blocksSea3Remote) then\n"
-		.. "\t\t\treturn nil\n"
-		.. "\t\tend\n"
-		.. "\t\treturn oldNamecall(self, ...)\n"
-		.. "\tend))\n"
-	.. "\t_G.HSKaitunPostMaxTeleportGuard = true\n"
-		.. "end\n"
-	local postMaxWorld2Source = postMaxWorld2Bootstrap
-
-	if type(writefile) == "function" then
-		Array.State.World3SourceFileWriteSuccess = pcall(function()
-			writefile("HSKaitun_PostMax_Sea2.lua", Array.World2AutoFarmCode)
-		end)
-	end
-
-	Array.Function.SetStatus("World3QueuePayloadLength", #postMaxWorld2Source)
-
-	Array.State.World3ReturnQueued = Array.Function.QueueTargetRunner(nil, postMaxWorld2Source)
-	Array.Function.SetStatus("World3ReturnQueued", Array.State.World3ReturnQueued)
-	Array.State.World3ReturnSuccess, Array.State.World3ReturnResult = pcall(function()
-		return Array.Service.TeleportService:Teleport(Array.Config.PlaceId.World2, Array.Service.Player)
-	end)
-	Array.Function.SetStatus("World3Return", Array.State.World3ReturnSuccess and "teleporting" or "failed")
-	Array.Function.SetStatus("World3ReturnResult", tostring(Array.State.World3ReturnResult))
-
-	if Array.State.World3ReturnSuccess then
-		Array.Function.SetAutoFarmStatus("State", "returning_world2")
-		Array.Config.Enabled = false
-	else
-		Array.State.World3ReturningToWorld2 = false
-	end
-
-	return Array.State.World3ReturnSuccess
 end
 
 function Array.Function.ShouldReturnToWorld2FromWorld3()
 	Array.Function.SetStatus("World3Return", "disabled")
+
 	return false
-
-	local level = Array.Function.GetPlayerLevel()
-	local maxLevel = Array.Function.GetWorld3MaxLevel()
-
-	Array.Function.SetStatus("World3PostMaxLevel", level)
-	Array.Function.SetStatus("World3PostMaxRequiredLevel", maxLevel)
-
-	return level >= maxLevel and Array.Function.HasWorld3ShrineReward()
 end
 
 function Array.Function.StartWorld3ShrineLoop()
-	Array.Function.SetStatus("World3Shrine", "disabled")
-	return false
-
 	if Array.State.World3ShrineStarted or not Array.Config.World3Shrine.Enabled then
 		return false
 	end
@@ -12638,7 +12590,7 @@ function Array.Function.MoveNearInstance(InstanceData)
 end
 
 function Array.Function.GetMobHumanoid(Mob)
-	return Mob and Mob:FindFirstChildWhichIsA("Humanoid", true) or nil
+	return Mob and Mob:FindFirstChildOfClass("Humanoid") or nil
 end
 
 function Array.Function.GetMobRoot(Mob)
@@ -12648,7 +12600,7 @@ function Array.Function.GetMobRoot(Mob)
 
 	return Mob:FindFirstChild("HumanoidRootPart")
 		or Mob.PrimaryPart
-		or Mob:FindFirstChildWhichIsA("BasePart", true)
+		or Mob:FindFirstChildWhichIsA("BasePart")
 end
 
 function Array.Function.TrimName(Name)
@@ -14173,6 +14125,52 @@ function Array.Function.UpdateToolMouse(Tool, TargetRoot)
 	return false
 end
 
+function Array.Function.AimFarmMouseAtTarget(Target)
+	if not Array.Config.AutoFarm.AimMouseAtTarget then
+		return false
+	end
+
+	Array.State.AimFarmMouseRoot = Array.Function.GetMobRoot(Target)
+	Array.State.AimFarmMouseCamera = workspace.CurrentCamera
+
+	if not Array.State.AimFarmMouseRoot or not Array.State.AimFarmMouseCamera then
+		return false
+	end
+
+	Array.State.AimFarmMousePosition = Array.Function.GetMobHitPosition(Target)
+		or Array.State.AimFarmMouseRoot.Position
+	Array.State.AimFarmMouseViewport, Array.State.AimFarmMouseVisible =
+		Array.State.AimFarmMouseCamera:WorldToViewportPoint(Array.State.AimFarmMousePosition)
+
+	if Array.State.AimFarmMouseViewport.Z <= 0 then
+		return false
+	end
+
+	Array.State.AimFarmMouseMoved = false
+
+	if type(mousemoveabs) == "function" then
+		Array.State.AimFarmMouseMoved = pcall(function()
+			mousemoveabs(Array.State.AimFarmMouseViewport.X, Array.State.AimFarmMouseViewport.Y)
+		end) or Array.State.AimFarmMouseMoved
+	end
+
+	if Array.Service.VirtualInputManager then
+		Array.State.AimFarmMouseMoved = pcall(function()
+			Array.Service.VirtualInputManager:SendMouseMoveEvent(
+				Array.State.AimFarmMouseViewport.X,
+				Array.State.AimFarmMouseViewport.Y,
+				game
+			)
+		end) or Array.State.AimFarmMouseMoved
+	end
+
+	if Array.State.AimFarmMouseMoved and Array.Config.AutoFarm.AimMouseDelay > 0 then
+		task.wait(Array.Config.AutoFarm.AimMouseDelay)
+	end
+
+	return Array.State.AimFarmMouseMoved
+end
+
 function Array.Function.GetKeyCode(KeyName)
 	Array.State.KeyName = tostring(KeyName or "")
 
@@ -14385,6 +14383,7 @@ function Array.Function.AttackTarget(Target)
 
 	for AttackIndex = 1, Array.Config.AutoFarm.AttackBurst do
 		Array.Function.UpdateToolMouse(Array.State.AttackTool, Array.State.AttackTargetRoot)
+		Array.Function.AimFarmMouseAtTarget(Target)
 
 		pcall(function()
 			Array.State.AttackTool:Activate()
@@ -15913,6 +15912,7 @@ assert(type(Array.Function.PickPoneglyphScroll) == "function", "poneglyph scroll
 assert(type(Array.Function.TeleportToSea2) == "function", "sea 2 teleport helper missing")
 assert(type(Array.Function.FindMob) == "function", "auto farm mob finder missing")
 assert(type(Array.Function.AttackTarget) == "function", "haze sea1 auto farm attack missing")
+assert(type(Array.Function.AimFarmMouseAtTarget) == "function", "farm mouse aim helper missing")
 assert(type(Array.Function.GetFarmHoverSettings) == "function", "farm hover setting helper missing")
 assert(type(Array.Function.UseBlackLegSkillKeys) == "function", "black leg auto skill helper missing")
 assert(type(Array.Function.AimMouseAtTarget) == "function", "black leg skill mouse aim helper missing")
