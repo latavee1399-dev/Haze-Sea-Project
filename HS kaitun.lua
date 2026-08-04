@@ -349,6 +349,9 @@ local Array = {
 			"MouseButton1Up",
 		},
 		Codes = {
+			"SPIDERCYBORG",
+			"CRIMSONEMPEROR",
+			"PHANTOMSHIP",
 			"1HEXP",
 			"300KMEMBERS",
 			"THANKS4PLAYING",
